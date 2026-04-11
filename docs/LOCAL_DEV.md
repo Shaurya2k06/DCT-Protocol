@@ -72,6 +72,8 @@ cd client && npm run dev
 
 Use **Dashboard → Delegations → Demo** and mint / delegate / execute against your local addresses.
 
+**Layer console (`/layer`) — OpenClaw demo:** bundled tunnel URLs and tokens live in **`client/src/lib/layerDemoDefaults.js`** (update when ngrok rotates). Click **Autofill demo** with no setup, or set optional `VITE_LAYER_*` in `client/.env` to override. Restart Vite after `.env` changes. **Run OpenClaw chain** runs Orchestrator → Research → Payment. **Run DCT live demo** (primary button) navigates to **`/live-demo`** and auto-starts the same **full E2E** as **Run full E2E workflow** on the Live page (phases 0–11: chain, delegations, payments, TLS, trust). Chat and `/health` are **proxied** via `POST /api/layer/openclaw-chat` and `GET /api/layer/openclaw-health` on the DCT server so the browser never hits ngrok directly (avoids CORS). You must run **`cd server && npm start`** alongside the Vite client. Bearers go to the proxy only in memory; `POST /api/layer/snapshot` still stores no tokens. For non-ngrok OpenClaw hosts, set **`LAYER_OPENCLAW_ALLOW_ALL=1`** on the server (see `server/routes/layer-workflow.js`).
+
 Environment variables for **local Anvil** (see `server/.env.example`):
 
 | Variable | Example |
@@ -82,16 +84,39 @@ Environment variables for **local Anvil** (see `server/.env.example`):
 
 For **Base Sepolia** (testnet), prefer **`INFURA_PROJECT_ID`** in `server/.env` (or a full Infura `RPC_URL`) instead of legacy Alchemy — wider `eth_getLogs` ranges for `/api/agents`. See `server/.env.example`.
 
-## TLSNotary — what is `TLSN_PROVER_URL`?
+**RPC limits:** Default **`DCT_ETH_GETLOGS_CHUNK_BLOCKS=10`** matches **Infura Free** (max 10 blocks per `eth_getLogs`). **`ERC8004_EVENTS_LOOKBACK_BLOCKS`** (default **2000** in code) limits how far back `/api/agents` scans so the endpoint finishes instead of hammering the RPC. **`DCT_ETH_GETLOGS_DELAY_MS`** (default **120**) spaces out requests — raise it if Alchemy still returns **429**. Alchemy PAYG can use a larger chunk + shorter delay. The server **auto-splits** ranges when the RPC returns “10 block range” errors. Restart the API after changing these.
 
-- The **`/tlsn`** page in the Vite app calls **`POST /api/tlsn/prove`** on the DCT server (no browser `tlsn-js`). The server uses **`TLSN_PROVER_URL`** internally.
+## TLSNotary
+
+The **`/tlsn`** page supports two modes: **Extension** (browser-side MPC-TLS via the Chrome extension) and **Server API** (backend prover).
+
+### Mode 1 — Extension (recommended for browser demos)
+
+The page detects the **[tlsn-extension](https://github.com/tlsnotary/tlsn-extension)** Chrome extension via `window.tlsn`. When found, it sends a plugin script to the extension which runs a real MPC-TLS proof in-browser.
+
+```bash
+# Clone & build the extension (separate repo)
+git clone https://github.com/tlsnotary/tlsn-extension.git
+cd tlsn-extension && npm install && npm run dev
+
+# Load unpacked in Chrome:
+#   chrome://extensions → Developer mode → Load unpacked → packages/extension/build
+
+# Start the verifier server (MPC-TLS counterparty, also acts as proxy)
+cd packages/verifier && cargo run   # → http://localhost:7047
+
+# Then open http://localhost:5173/tlsn in this project — the page auto-detects the extension
+```
+
+### Mode 2 — Server API (headless / CI)
+
 - **`TLSN_PROVER_URL`** is the base URL of a small HTTP service that implements **`POST /prove`** (see `server/lib/tlsn/prover.mjs`). The main API server calls it when generating TLS proofs for `POST /api/tlsn/prove` and `POST /api/delegation/execute` (when a URL is supplied).
 - It is **not** the notary. The **notary** is the TLSNotary MPC server (e.g. `http://127.0.0.1:7047` from Docker).
 
 **Local stack:**
 
 ```bash
-# Notary + WebSocket TCP proxy (browser demos)
+# Notary + WebSocket TCP proxy
 docker compose -f docker-compose.tlsn.yml up -d
 
 # Dev "prover" HTTP API (fills TLSN_PROVER_URL)

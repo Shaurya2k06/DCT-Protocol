@@ -5,10 +5,11 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Save, Plus, Trash2, Link2, Loader2, CheckCircle2, AlertCircle,
-  LayoutGrid, Server, Play,
+  LayoutGrid, Server, Play, Wand2, Workflow,
 } from "lucide-react";
 import LayerWorkflowCanvas from "../components/layer/LayerWorkflowCanvas";
 import {
@@ -28,6 +29,9 @@ import {
   pickAssistantText,
   postOpenClawChat,
 } from "../lib/openClawChat";
+import { DCT_API_BASE } from "../lib/dctApiBase.js";
+import { getLayerDemoAutofill } from "../lib/layerDemoEnv";
+import { setPendingLiveDemoE2E } from "../lib/liveDemoTrigger";
 
 /** Stable key for localStorage bearer (each OpenClaw tunnel can differ). */
 function bearerKeyForAgentNode(node) {
@@ -112,6 +116,7 @@ function migrateAgentNodes(nodes) {
 }
 
 export default function LayerConsole() {
+  const navigate = useNavigate();
   const [ready, setReady] = useState(false);
   const [nodes, setNodes] = useState(DEFAULT_NODES);
   const [edges, setEdges] = useState(DEFAULT_EDGES);
@@ -346,7 +351,11 @@ export default function LayerConsole() {
         },
         workflow: { nodes, edges },
       });
-      setMsg({ type: "ok", text: "Saved — workflow metadata is on the DCT server. PEM / bearer stayed in this browser only." });
+      setMsg({
+        type: "ok",
+        text:
+          "Saved graph + OpenClaw defaults to server/data/layer-snapshot.json. This does not run DCT (no ERC-8004, Biscuit, or registry txs). Use Run DCT live demo for on-chain steps. PEM / bearer stayed in this browser.",
+      });
     } catch (e) {
       setMsg({
         type: "err",
@@ -357,6 +366,37 @@ export default function LayerConsole() {
     }
   };
 
+  const handleAutofillDemo = useCallback(() => {
+    const cfg = getLayerDemoAutofill();
+
+    setNodes((ns) =>
+      ns.map((n) => {
+        if (n.type !== "dctAgent") return n;
+        const slot = n.data?.agentSlot;
+        const s = slot && cfg[slot];
+        const patch = { ...n.data };
+        if (s?.url) patch.openClawBaseUrl = s.url;
+        if (cfg.model) patch.openClawModel = cfg.model;
+        return { ...n, data: patch };
+      })
+    );
+
+    for (const slot of ["orchestrator", "research", "payment"]) {
+      const b = cfg[slot]?.bearer;
+      if (b) setAgentBearer(slot, b);
+    }
+
+    if (selectedBearerKey) {
+      setSlotBearerInput(getAgentBearer(selectedBearerKey));
+    }
+
+    setMsg({
+      type: "ok",
+      text:
+        "Applied bundled OpenClaw demo URLs + tokens (client/src/lib/layerDemoDefaults.js). VITE_LAYER_* in client/.env overrides when set. Bearers saved in localStorage per slot.",
+    });
+  }, [selectedBearerKey]);
+
   const handleTestOpenClaw = async () => {
     const base = openClawBase.trim().replace(/\/$/, "");
     if (!base) {
@@ -366,18 +406,33 @@ export default function LayerConsole() {
     setTesting(true);
     setMsg(null);
     try {
-      const url = `${base}/health`;
-      const r = await fetch(url, { method: "GET", mode: "cors" });
-      if (r.ok) {
-        setMsg({ type: "ok", text: `Reachable: ${url} (${r.status})` });
-      } else {
-        setMsg({ type: "err", text: `HTTP ${r.status} from ${url}` });
+      const r = await fetch(
+        `${DCT_API_BASE}/api/layer/openclaw-health?baseUrl=${encodeURIComponent(base)}`
+      );
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setMsg({
+          type: "err",
+          text:
+            j.error ||
+            `Health proxy HTTP ${r.status}. Is the DCT server running (${DCT_API_BASE})?`,
+        });
+        return;
       }
-    } catch {
+      if (j.ok) {
+        setMsg({
+          type: "ok",
+          text: `Reachable via DCT proxy: ${j.url} → HTTP ${j.status}`,
+        });
+      } else {
+        setMsg({ type: "err", text: `HTTP ${j.status} from ${j.url}` });
+      }
+    } catch (e) {
       setMsg({
         type: "err",
         text:
-          "Could not reach OpenClaw (CORS, TLS, or offline). For mTLS, use a local proxy or server-side bridge — PEM is kept in the browser only.",
+          e.message ||
+          `Could not reach DCT server at ${DCT_API_BASE} (start with: cd server && npm start).`,
       });
     } finally {
       setTesting(false);
@@ -408,12 +463,34 @@ export default function LayerConsole() {
             Layer console
           </h1>
           <p className="text-sm text-nb-ink/60 mt-1 max-w-xl">
-            Connect one OpenClaw URL + bearer per agent (e.g. three ngrok tunnels), chain Gateway → Orchestrator →
-            Research → Payment, then run the chat demo. Workflow metadata syncs to the API; tokens stay in
-            localStorage only.
+            <span className="font-display font-semibold text-nb-ink/80">DCT live demo</span> runs on the{" "}
+            <span className="font-mono text-nb-ink/70">Live</span> page (chain, delegations, payments, TLS, trust).
+            OpenClaw tools below are optional. Workflow snapshot syncs to the API; tokens stay in localStorage only.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 items-center">
+          <button
+            type="button"
+            onClick={() => {
+              setPendingLiveDemoE2E();
+              navigate("/live-demo");
+            }}
+            className="nb-btn-primary text-sm"
+            title="Opens Live and auto-runs the full 12-phase E2E (same as Run full E2E workflow there)"
+          >
+            <Workflow className="w-4 h-4" />
+            Run DCT live demo
+          </button>
+          <button
+            type="button"
+            onClick={handleAutofillDemo}
+            disabled={chainBusy}
+            className="nb-btn-ghost text-sm"
+            title="Fills from client/src/lib/layerDemoDefaults.js (optional VITE_LAYER_* overrides)"
+          >
+            <Wand2 className="w-4 h-4" />
+            Autofill demo
+          </button>
           <button
             type="button"
             onClick={handleTestOpenClaw}
@@ -477,6 +554,12 @@ export default function LayerConsole() {
               <Server className="w-4 h-4 text-nb-accent-2" />
               <h2 className="text-sm font-display font-bold text-nb-ink">OpenClaw</h2>
             </div>
+            <p className="text-[10px] text-nb-ink/50 mb-3 leading-relaxed">
+              Requests are proxied through the DCT server at{" "}
+              <span className="font-mono text-nb-ink/70">{DCT_API_BASE}</span> so ngrok does not need CORS.
+              Start it with <span className="font-mono">cd server && npm start</span> (same host as{" "}
+              <span className="font-mono">VITE_API_URL</span>).
+            </p>
             <label className="block text-[10px] font-display font-bold uppercase tracking-wider text-nb-ink/50 mb-1">
               Default base URL (fallback if an agent field is empty)
             </label>
@@ -678,8 +761,11 @@ export default function LayerConsole() {
             onSelectNodeId={setSelectedId}
           />
           <p className="text-[10px] text-nb-ink/50 leading-relaxed">
-            Drag nodes, connect Entry → agents → downstream agents. Limits map to Biscuit / DCT scope
-            when you run delegation from the server or SDK.
+            Drag and connect nodes. <strong className="text-nb-ink/70">Save to layer</strong> only persists the canvas JSON
+            (plus default OpenClaw URL) — it does <strong className="text-nb-ink/70">not</strong> bind agent identity or enforce
+            scopes on-chain. Those limits are a design record until you run delegation via the{" "}
+            <strong className="text-nb-ink/70">Live</strong> demo or SDK. Nothing else reads this file today except this page
+            on load.
           </p>
         </div>
       </div>

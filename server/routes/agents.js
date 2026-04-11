@@ -3,7 +3,7 @@
  */
 
 import express from "express";
-import { getERC8004, getRegistry, getSigner, ethers, loadAddresses } from "../lib/blockchain.js";
+import { getERC8004, getRegistry, getSigner, ethers, loadAddresses, getProvider } from "../lib/blockchain.js";
 import { audit } from "../lib/audit.js";
 import {
   getLatestTrustProfile,
@@ -23,6 +23,8 @@ router.get("/", async (req, res) => {
     const variant = addresses.identityRegistryVariant || "official";
 
     const agents = [];
+    /** @type {number | null} */
+    let erc8004ScannedFromBlock = null;
 
     if (variant === "test") {
       const totalAgents = await erc8004.totalAgents();
@@ -39,7 +41,19 @@ router.get("/", async (req, res) => {
         });
       }
     } else {
-      const fromBlock = Number(process.env.ERC8004_EVENTS_FROM_BLOCK || 0);
+      const provider = getProvider();
+      const latest = await provider.getBlockNumber();
+      const envFrom = process.env.ERC8004_EVENTS_FROM_BLOCK;
+      /** Default 2000 blocks ≈ 200 sequential eth_getLogs (10-block windows) — pair with DCT_ETH_GETLOGS_DELAY_MS to avoid 429 */
+      const lookback = Math.max(
+        500,
+        Number(process.env.ERC8004_EVENTS_LOOKBACK_BLOCKS ?? 2000)
+      );
+      const fromBlock =
+        envFrom != null && String(envFrom).trim() !== ""
+          ? Math.max(0, Number(envFrom))
+          : Math.max(0, latest - lookback);
+      erc8004ScannedFromBlock = fromBlock;
       const filter = erc8004.filters.Registered();
       const events = await queryFilterChunked(erc8004, filter, fromBlock, "latest");
       for (const ev of events) {
@@ -62,7 +76,12 @@ router.get("/", async (req, res) => {
       }
     }
 
-    res.json({ agents, total: agents.length, identityRegistryVariant: variant });
+    res.json({
+      agents,
+      total: agents.length,
+      identityRegistryVariant: variant,
+      ...(erc8004ScannedFromBlock != null ? { erc8004ScannedFromBlock } : {}),
+    });
   } catch (error) {
     console.error("Error fetching agents:", error);
     res.status(500).json({ error: error.message });

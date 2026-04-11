@@ -486,7 +486,7 @@ Autonomous agents make direct API calls with API keys — no browser, no human s
 
 - **Notary server:** run the official notary image (see `docker-compose.tlsn.yml`). The notary is chain-agnostic TLSNotary infrastructure — agents and servers connect to it the same way.
 - **Server-side proving (no browser):** the Node API under `server/lib/tlsn/` performs TLSNotary flows suitable for backend and autonomous callers. When `TLSN_PROVER_URL` is set, `POST /api/delegation/execute` can obtain a real proof and compress it to the **65-byte inline attestation** consumed by `NotaryAttestationVerifier` / `DCTEnforcer.validateActionWithScope`. That path does not require `tlsn-js` or a browser.
-- **Interactive demo:** the Vite **`/tlsn`** page calls **`POST /api/tlsn/prove`** (server uses `TLSN_PROVER_URL`); no browser `tlsn-js`.
+- **Interactive demo:** the Vite **`/tlsn`** page supports two modes: (1) **Extension** — uses the maintained **[tlsn-extension](https://github.com/tlsnotary/tlsn-extension)** Chrome extension via `window.tlsn.execCode()` for real in-browser MPC-TLS proofs, or (2) **Server API** — calls `POST /api/tlsn/prove` (server uses `TLSN_PROVER_URL`). No `tlsn-js` dependency.
 - **On-chain verification** is unchanged: the enforcer checks the notary-backed attestation against the expected tool hash.
 
 For new greenfield agent binaries, prefer the Rust `tlsn` crate; for this stack, use the notary + Node TLSN integration above.

@@ -24,6 +24,7 @@ import {
   Play, CheckCircle2, XCircle, Loader2, ChevronRight,
   RotateCcw, Link2, ExternalLink, Workflow, Terminal, AlertTriangle,
 } from "lucide-react";
+import { consumePendingLiveDemoE2E } from "../lib/liveDemoTrigger";
 import api from "../lib/api";
 import EventLog from "../components/ui/EventLog";
 
@@ -440,6 +441,8 @@ export default function LiveDemo() {
   const fullWorkflowActiveRef = useRef(false);
   const logSeqRef = useRef(0);
   const logsEndRef = useRef(null);
+  /** Set after `runFullWorkflow` is defined — Layer console can trigger E2E via sessionStorage. */
+  const runFullWorkflowRef = useRef(async () => {});
 
   // auto-scroll logs
   useEffect(() => {
@@ -1278,6 +1281,15 @@ export default function LiveDemo() {
       setFullRunProgress(null);
     }
   }
+
+  runFullWorkflowRef.current = runFullWorkflow;
+
+  useEffect(() => {
+    if (!consumePendingLiveDemoE2E()) return;
+    queueMicrotask(() => {
+      runFullWorkflowRef.current();
+    });
+  }, []);
 
   function reset() {
     setStep(0);

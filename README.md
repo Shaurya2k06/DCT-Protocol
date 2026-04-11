@@ -7,7 +7,7 @@
 | Identity | ERC-8004 Agent NFT Registry |
 | Off-chain auth | Eclipse Biscuit WASM (Ed25519 + Datalog) |
 | On-chain enforcement | DCTRegistry + DCTEnforcer (UUPS, Base Sepolia) |
-| Action attestation | TLSNotary (Dockerized notary + server-side prover) |
+| Action attestation | TLSNotary (tlsn-extension for browser + server-side prover) |
 | Gas sponsorship | ERC-4337 via Pimlico bundler + paymaster |
 | Backend | Node.js / Express (`server/`) |
 | Frontend | React / Vite (`client/`) |
@@ -45,11 +45,34 @@ cd server && npm run tlsn-prover
 # → prover on :8090
 ```
 
-### TLSNotary — browser vs server
+### TLSNotary — extension (browser) + server API
 
-The upstream **`tlsn-js`** npm package is **deprecated**; for a maintained **browser** experience see **[tlsn-extension](https://github.com/tlsnotary/tlsn-extension)**.
+The **`/tlsn`** page supports two proving modes:
 
-This repo’s **`/tlsn`** dashboard calls **`POST /api/tlsn/prove`** (same pipeline as the rest of the API): the Node server forwards to **`TLSN_PROVER_URL`** (`POST /prove`). Run **`cd server && npm run tlsn-prover`** for a local dev prover, or wire a real Rust tlsn prover. No browser WASM and no `tlsn-js` dependency.
+| Mode | How it works |
+|---|---|
+| **Extension** (preferred) | Uses the maintained **[tlsn-extension](https://github.com/tlsnotary/tlsn-extension)** Chrome extension. The page sends plugin JS via `window.tlsn.execCode()` and the extension runs a real MPC-TLS proof in-browser with its bundled WASM prover + verifier. Progress events stream back via `window.postMessage`. |
+| **Server API** (fallback) | Calls `POST /api/tlsn/prove` on the DCT server, which proxies to `TLSN_PROVER_URL` (`POST /prove`). Run `cd server && npm run tlsn-prover` for a local dev prover, or wire a real Rust tlsn prover. |
+
+**Extension quick start:**
+
+```bash
+# 1 — Clone & build the extension
+git clone https://github.com/tlsnotary/tlsn-extension.git
+cd tlsn-extension && npm install && npm run dev
+
+# 2 — Load in Chrome
+#   chrome://extensions → Developer mode → Load unpacked → packages/extension/build
+
+# 3 — Start the verifier (from tlsn-extension repo)
+cd packages/verifier && cargo run   # → http://localhost:7047
+
+# 4 — Open DCT client (this repo)
+cd client && npm run dev            # → http://localhost:5173/tlsn
+# The page detects window.tlsn automatically
+```
+
+The upstream `tlsn-js` npm package is **deprecated** — this repo does not use it.
 
 ---
 

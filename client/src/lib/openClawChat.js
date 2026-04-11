@@ -1,7 +1,9 @@
 /**
- * OpenAI-compatible chat completions against an OpenClaw gateway (browser → ngrok, etc.).
- * Bearers stay in localStorage — never pass through the DCT snapshot API.
+ * OpenAI-compatible chat completions — proxied via DCT server to avoid ngrok CORS.
+ * Bearers are sent only to your DCT API (`POST /api/layer/openclaw-chat`), not stored on disk.
  */
+
+import { DCT_API_BASE } from "./dctApiBase.js";
 
 /**
  * @param {{ baseUrl: string, bearer?: string, model?: string, messages: Array<{ role: string, content: string }> }} opts
@@ -17,19 +19,10 @@ export async function postOpenClawChat({
     .replace(/\/$/, "");
   if (!base) throw new Error("Missing OpenClaw base URL for this agent.");
 
-  const url = `${base}/v1/chat/completions`;
-  /** @type {Record<string, string>} */
-  const headers = {
-    "Content-Type": "application/json",
-    // ngrok free tier interstitial
-    "ngrok-skip-browser-warning": "true",
-  };
-  if (bearer) headers.Authorization = `Bearer ${bearer}`;
-
-  const r = await fetch(url, {
+  const r = await fetch(`${DCT_API_BASE}/api/layer/openclaw-chat`, {
     method: "POST",
-    headers,
-    body: JSON.stringify({ model, messages }),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ baseUrl: base, bearer, model, messages }),
   });
 
   const text = await r.text();
@@ -38,12 +31,12 @@ export async function postOpenClawChat({
     data = JSON.parse(text);
   } catch {
     throw new Error(
-      `OpenClaw returned non-JSON (HTTP ${r.status}): ${text.slice(0, 240)}`
+      `DCT proxy returned non-JSON (HTTP ${r.status}): ${text.slice(0, 240)}`
     );
   }
   if (!r.ok) {
     const err =
-      (data && (data.error?.message || data.error)) || `HTTP ${r.status}`;
+      (data && (data.error || data.message)) || `HTTP ${r.status}`;
     throw new Error(String(err));
   }
   return data;
