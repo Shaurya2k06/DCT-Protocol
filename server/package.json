@@ -7,18 +7,21 @@
     "test": "node --experimental-wasm-modules --test",
     "start": "node --experimental-wasm-modules server.js",
     "dev": "node --watch --experimental-wasm-modules server.js",
-    "node": "node --experimental-wasm-modules server.js"
+    "node": "node --experimental-wasm-modules server.js",
+    "demo:onchain": "node --experimental-wasm-modules scripts/demo-onchain.mjs"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "DCT Protocol Server — Delegated Capability Tokens",
   "dependencies": {
-    "@shaurya2k06/dctsdk": "^1.0.0",
+    "@shaurya2k06/dctsdk": "file:../packages/dct-sdk",
     "cors": "^2.8.6",
-    "pg": "^8.14.1",
     "dotenv": "^17.4.1",
     "ethers": "^6.16.0",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "permissionless": "^0.3.5",
+    "pg": "^8.14.1",
+    "viem": "^2.47.12"
   }
 }

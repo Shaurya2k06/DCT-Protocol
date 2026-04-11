@@ -4,9 +4,10 @@ import { Users, GitBranch, ShieldOff, TrendingUp, Zap, Shield } from "lucide-rea
 import Header from "../components/layout/Header";
 import StatCard from "../components/cards/StatCard";
 import ActivityCard from "../components/cards/ActivityCard";
-import { getAgents, getDelegationTree } from "../lib/api";
+import { getAgents, getDelegationTree, healthCheck } from "../lib/api";
 
 export default function Dashboard() {
+  const [chainBanner, setChainBanner] = useState(null);
   const [stats, setStats] = useState({
     agents: 0,
     delegations: 0,
@@ -15,6 +16,18 @@ export default function Dashboard() {
   });
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    healthCheck()
+      .then((h) =>
+        setChainBanner(
+          h.chainId != null && h.network
+            ? `${h.network} · chain ${h.chainId}`
+            : null
+        )
+      )
+      .catch(() => setChainBanner(null));
+  }, []);
 
   useEffect(() => {
     async function fetchData() {
@@ -63,7 +76,11 @@ export default function Dashboard() {
     <div className="space-y-8">
       <Header
         title="Dashboard"
-        subtitle="DCT Protocol — Delegated Capability Tokens"
+        subtitle={
+          chainBanner
+            ? `DCT Protocol — ${chainBanner}`
+            : "DCT Protocol — Delegated Capability Tokens"
+        }
       />
 
       {/* Hero Banner */}

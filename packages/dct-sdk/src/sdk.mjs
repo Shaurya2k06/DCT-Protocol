@@ -13,7 +13,7 @@
 
 import {
   biscuit, block, authorizer, policy,
-  Biscuit, BiscuitBuilder, BlockBuilder,
+  Biscuit, BiscuitBuilder, BlockBuilder, AuthorizerBuilder,
   PrivateKey, PublicKey, KeyPair,
   SignatureAlgorithm,
 } from "@biscuit-auth/biscuit-wasm";
@@ -239,8 +239,6 @@ export function authorizeToken(tokenB64, toolName, spendAmount, agentTokenId) {
     const pubKey = getRootPublicKey();
     const token = Biscuit.fromBase64(tokenB64, pubKey);
 
-    const auth = token.getAuthorizer();
-
     let authCode = `time(${Math.floor(Date.now() / 1000)});\n`;
     authCode += `allowed_tool("${toolName}");\n`;
     authCode += `spend_usdc(${spendAmount});\n`;
@@ -249,7 +247,9 @@ export function authorizeToken(tokenB64, toolName, spendAmount, agentTokenId) {
     }
     authCode += `allow if true;\n`;
 
-    auth.addCode(authCode);
+    const builder = new AuthorizerBuilder();
+    builder.addCode(authCode);
+    const auth = builder.buildAuthenticated(token);
     auth.authorize();
 
     return { authorized: true };
@@ -381,7 +381,8 @@ export async function execute({
   }
 
   const enforcer = getEnforcer();
-  const signerAddr = await getSigner().getAddress();
+  const signer = getSigner();
+  const signerAddr = await signer.getAddress();
   const toolHash = ethers.keccak256(ethers.toUtf8Bytes(toolName));
 
   const allowedTools = (meta.allowedTools || []).map((t) =>
@@ -395,6 +396,7 @@ export async function execute({
     };
   }
 
+  const nonce = await signer.provider.getTransactionCount(await signer.getAddress(), "pending");
   const tx = await enforcer.validateActionWithScope(
     meta.revocationId,
     BigInt(agentTokenId),
@@ -405,7 +407,8 @@ export async function execute({
     allowedTools,
     BigInt(meta.spendLimitUsdc),
     Number(meta.maxDepth ?? 3),
-    BigInt(meta.expiresAt)
+    BigInt(meta.expiresAt),
+    { nonce }
   );
   const receipt = await tx.wait();
 
@@ -441,7 +444,9 @@ export async function execute({
  */
 export async function revoke(revocationId, agentTokenId) {
   const registry = getRegistry();
-  const tx = await registry.revoke(revocationId, BigInt(agentTokenId));
+  const signer = getSigner();
+  const nonce = await signer.provider.getTransactionCount(await signer.getAddress(), "pending");
+  const tx = await registry.revoke(revocationId, BigInt(agentTokenId), { nonce });
   const receipt = await tx.wait();
 
   return {
@@ -496,11 +501,22 @@ function getTokenBlocks(token) {
 
 function toBytes32(id) {
   if (typeof id === "string") {
-    return id.startsWith("0x") ? id : `0x${id.padStart(64, "0")}`;
+    const s = id.startsWith("0x") ? id : `0x${id}`;
+    try {
+      const bytes = ethers.getBytes(s);
+      if (bytes.length === 32) return ethers.hexlify(bytes);
+      if (bytes.length < 32) return ethers.hexlify(ethers.zeroPadBytes(bytes, 32));
+      // Long Biscuit revocation ids: canonical bytes32 for on-chain DCTRegistry / DCTEnforcer
+      return ethers.keccak256(bytes);
+    } catch {
+      return ethers.keccak256(ethers.toUtf8Bytes(id));
+    }
   }
-  // Uint8Array
   const hex = Array.from(new Uint8Array(id))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-  return "0x" + hex.padStart(64, "0");
+  const bytes = ethers.getBytes("0x" + hex);
+  if (bytes.length === 32) return ethers.hexlify(bytes);
+  if (bytes.length < 32) return ethers.hexlify(ethers.zeroPadBytes(bytes, 32));
+  return ethers.keccak256(bytes);
 }

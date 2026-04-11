@@ -62,7 +62,8 @@ export const getDelegationStatus = (revocationId) =>
 export const validateAction = (data) =>
   api.post("/api/delegation/validate", data).then((r) => r.data);
 
-// ── Health ──
+// ── Health / config ──
 export const healthCheck = () => api.get("/").then((r) => r.data);
+export const getConfig = () => api.get("/api/config").then((r) => r.data);
 
 export default api;

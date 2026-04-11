@@ -1,0 +1,10 @@
+{
+  "ERC8004IdentityRegistry": "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+  "NotaryAttestationVerifier": "",
+  "DCTRegistry": "",
+  "DCTEnforcer": "",
+  "identityRegistryVariant": "official",
+  "chainId": 84532,
+  "network": "base-sepolia",
+  "agents": []
+}

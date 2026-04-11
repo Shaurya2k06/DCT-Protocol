@@ -16,6 +16,11 @@ const artifacts = [
   { solPath: "DCTEnforcer.sol", name: "DCTEnforcer", outName: "DCTEnforcer.json" },
   { solPath: "NotaryAttestationVerifier.sol", name: "NotaryAttestationVerifier", outName: "NotaryAttestationVerifier.json" },
   { solPath: "TestAgentRegistry.sol", name: "TestAgentRegistry", outName: "TestAgentRegistry.json" },
+  {
+    solPath: "DCTCaveatEnforcer.sol",
+    name: "DCTCaveatEnforcer",
+    outName: "DCTCaveatEnforcer.json",
+  },
 ];
 
 function readArtifact(solPath, contractName) {

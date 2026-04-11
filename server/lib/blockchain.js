@@ -58,6 +58,15 @@ const ADDRESS_KEY = {
   DCTRegistry: "DCTRegistry",
   DCTEnforcer: "DCTEnforcer",
   IdentityRegistry: "ERC8004IdentityRegistry",
+  NotaryAttestationVerifier: "NotaryAttestationVerifier",
+};
+
+/** Env overrides (non-empty wins over addresses file) — Base Sepolia deploy + CI */
+const ENV_ADDR = {
+  DCTRegistry: "DCT_REGISTRY_ADDRESS",
+  DCTEnforcer: "DCT_ENFORCER_ADDRESS",
+  IdentityRegistry: "ERC8004_IDENTITY_REGISTRY",
+  NotaryAttestationVerifier: "NOTARY_ATTESTATION_VERIFIER_ADDRESS",
 };
 
 function resolveAddressesPath() {
@@ -80,16 +89,29 @@ export function loadAddresses() {
   return JSON.parse(fs.readFileSync(addressPath, "utf-8"));
 }
 
+function resolveContractAddress(contractName) {
+  const j = loadABI(contractName);
+  const addrs = loadAddresses();
+  const key = ADDRESS_KEY[contractName] || contractName;
+  const envKey = ENV_ADDR[contractName];
+  const fromEnv = envKey ? process.env[envKey]?.trim() : "";
+  const raw = fromEnv || j.address || addrs[key];
+  if (!raw || raw === ethers.ZeroAddress) {
+    const hint =
+      "Deploy DCT to Base Sepolia (see contracts/README), set env overrides, " +
+      "or use ADDRESSES_FILE=addresses.local-anvil.json with local Anvil.";
+    throw new Error(
+      `No address for ${contractName} — set ${key} in addresses.json, or ${envKey || "N/A"} in .env. ${hint}`
+    );
+  }
+  return ethers.getAddress(raw);
+}
+
 function getContract(contractName) {
   if (!contracts[contractName]) {
     const j = loadABI(contractName);
     const abi = j.abi ?? j;
-    const addrs = loadAddresses();
-    const key = ADDRESS_KEY[contractName] || contractName;
-    const address = j.address || addrs[key];
-    if (!address) {
-      throw new Error(`No address for ${contractName} — set ${key} in addresses.json`);
-    }
+    const address = resolveContractAddress(contractName);
     contracts[contractName] = new ethers.Contract(address, abi, getSigner());
   }
   return contracts[contractName];

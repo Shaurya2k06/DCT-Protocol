@@ -23,7 +23,13 @@ app.use(express.json());
 import delegationRoutes from "./routes/delegation.js";
 import agentRoutes from "./routes/agents.js";
 import biscuitRoutes from "./routes/biscuit.js";
+import configRoutes from "./routes/config.js";
+import aaRoutes from "./routes/aa.js";
+import integrationsDelegationRoutes from "./routes/integrations-delegation.js";
 
+app.use("/api/config", configRoutes);
+app.use("/api/integrations", integrationsDelegationRoutes);
+app.use("/api/aa", aaRoutes);
 app.use("/api/delegation", delegationRoutes);
 app.use("/api/agents", agentRoutes);
 app.use("/api/biscuit", biscuitRoutes);
@@ -47,6 +53,9 @@ app.get("/", (req, res) => {
     rpcMode,
     database: pool ? "connected" : process.env.DATABASE_URL ? "error" : "disabled",
     endpoints: [
+      "GET  /api/config",
+      "GET  /api/integrations/delegation-framework  ← ERC-7710 / EntryPoint / caveat addresses",
+      "POST /api/aa/execute-scope                  ← ERC-4337 + Pimlico (sponsored gas)",
       "GET  /api/agents",
       "GET  /api/agents/:tokenId/trust",
       "POST /api/agents/register",

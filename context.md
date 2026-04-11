@@ -739,13 +739,13 @@ function toBytes32(id: Uint8Array): string {
 | **Off-chain token** | Eclipse Biscuit v3 (Apache 2.0) | `npm i @biscuit-auth/biscuit-wasm` | `doc.biscuitsec.org` |
 | **Delegation enforcement** | ERC-7710 MetaMask Delegation Framework | `forge install metamask/delegation-framework@v1.3.0` | `docs.gator.metamask.io` |
 | **TypeScript SDK** | MetaMask Delegation Toolkit | `npm i @metamask/delegation-toolkit` | `docs.gator.metamask.io` |
-| **Lineage registry** | DCTRegistry.sol (novel) | Deploy via Hardhat/Foundry | This document |
+| **Lineage registry** | DCTRegistry.sol (novel) | Deploy via Foundry (`forge script`) | This document |
 | **Action verification** | TLSNotary MPC-TLS (Rust) | `cargo add tlsn` | `tlsnotary.org` |
 | **Agent identity** | ERC-8004 (Draft, deployed) | `eips.ethereum.org/EIPS/eip-8004` | `8004.org` |
-| **ERC-8004 contracts** | Base mainnet registry | `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432` | `8004scan.io` |
+| **ERC-8004 contracts** | Base Sepolia registry (testnet) | `0x8004A818BFB912233c491871b3d84c89A494BD9e` | `8004.org` |
 | **Account abstraction** | ERC-4337 via Pimlico / permissionless.js | `npm i permissionless` | `docs.pimlico.io` |
 | **EVM interaction** | viem + ethers v6 | `npm i viem ethers` | `viem.sh` |
-| **Contracts** | Hardhat + OpenZeppelin | `npm i hardhat @openzeppelin/contracts` | `hardhat.org` |
+| **Contracts** | Foundry + OpenZeppelin | `forge init` + `forge install` | `book.getfoundry.sh` |
 | **Chain (testnet)** | Base Sepolia | RPC: `sepolia.base.org` | `docs.base.org` |
 | **Chain (mainnet)** | Base mainnet | RPC: `mainnet.base.org` | `docs.base.org` |
 

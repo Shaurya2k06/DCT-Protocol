@@ -14,6 +14,7 @@ import {
 import {
   getRegistry, getEnforcer, getSigner, ethers,
 } from "../lib/blockchain.js";
+import { audit } from "../lib/audit.js";
 
 const router = express.Router();
 
@@ -87,6 +88,12 @@ router.post("/register", async (req, res) => {
     );
     const receipt = await tx.wait();
 
+    await audit(
+      "delegation.register",
+      { txHash: receipt.hash, childId, blockNumber: receipt.blockNumber },
+      req
+    );
+
     res.json({
       success: true,
       txHash: receipt.hash,
@@ -122,6 +129,17 @@ router.post("/delegate", async (req, res) => {
       childSpendLimit,
     });
 
+    await audit(
+      "delegation.delegate",
+      {
+        childAgentTokenId,
+        txHash: result.txHash,
+        blockNumber: result.blockNumber,
+        childRevocationId: result.childRevocationId,
+      },
+      req
+    );
+
     res.json({ success: true, ...result });
   } catch (error) {
     console.error("Error delegating:", error);
@@ -149,6 +167,18 @@ router.post("/execute", async (req, res) => {
       spendAmount,
       tlsAttestation: tls || "0x",
     });
+    await audit(
+      "delegation.execute",
+      {
+        agentTokenId,
+        toolName,
+        success: result.success,
+        stage: result.stage,
+        txHash: result.txHash,
+        blockNumber: result.blockNumber,
+      },
+      req
+    );
     res.json(result);
   } catch (error) {
     console.error("Error executing:", error);
@@ -165,6 +195,11 @@ router.post("/revoke", async (req, res) => {
   try {
     const { tokenId, agentTokenId } = req.body;
     const result = await revoke(tokenId, agentTokenId);
+    await audit(
+      "delegation.revoke",
+      { tokenId, agentTokenId, txHash: result.txHash, success: result.success },
+      req
+    );
     res.json(result);
   } catch (error) {
     console.error("Error revoking:", error);
@@ -233,6 +268,18 @@ router.post("/validate", async (req, res) => {
         spendAmount,
         tlsAttestation: tls || "0x",
       });
+      await audit(
+        "delegation.validate",
+        {
+          revocationId,
+          agentTokenId,
+          toolName,
+          success: result.success,
+          stage: result.stage,
+          txHash: result.txHash,
+        },
+        req
+      );
       return res.json(result);
     }
 
@@ -257,12 +304,14 @@ router.post("/validate", async (req, res) => {
       }
     });
 
-    res.json({
+    const out = {
       success: !!validatedEvent,
       stage: "on-chain",
       txHash: receipt.hash,
       blockNumber: receipt.blockNumber,
-    });
+    };
+    await audit("delegation.validate", { revocationId, agentTokenId, toolName, ...out }, req);
+    res.json(out);
   } catch (error) {
     console.error("Error validating action:", error);
     res.status(500).json({ error: error.message });

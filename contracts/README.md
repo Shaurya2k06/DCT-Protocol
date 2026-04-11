@@ -17,19 +17,53 @@ node scripts/export-abis.mjs   # copy ABIs → ../client/src/abi and ../server/a
 
 Contracts are **UUPS-upgradeable** (implementations + `ERC1967Proxy`). Upgrade authority is the **deployer** (`Ownable` on each implementation).
 
-Set `PRIVATE_KEY` (uint256 hex). For Base Sepolia production, set `ERC8004_IDENTITY_REGISTRY`. For local test registry, set `DEPLOY_LOCAL_IDENTITY_REGISTRY=true`.
+### Base Sepolia (84532) — testnet only
+
+Set `PRIVATE_KEY` (uint256 hex). Defaults `ERC8004_IDENTITY_REGISTRY` to the [canonical Base Sepolia ERC-8004 registry](https://8004.org) unless you override it.
 
 ```bash
 export PRIVATE_KEY=...
-forge script script/DeployDCT.s.sol:DeployDCT --rpc-url $BASE_SEPOLIA_RPC_URL --broadcast
+export ALCHEMY_API_KEY=...   # or set BASE_SEPOLIA_RPC_URL to any Base Sepolia JSON-RPC
+./scripts/deploy-base-sepolia.sh
 ```
 
 Optional: `NOTARY_SIGNER_ADDRESS` (defaults to deployer).
 
-After deploy, use **proxy addresses** from the script logs for `client/src/addresses.json` and `server/addresses.json` (not the implementation addresses). For a second network, copy to `server/addresses.local.json` and set `ADDRESSES_FILE` and `RPC_URL` accordingly.
+**Private key:** Forge expects `PRIVATE_KEY` with a `0x` prefix (the deploy script normalizes this if yours omits it).
+
+After a successful broadcast, sync app address files (reads `broadcast/DeployDCT.s.sol/84532/run-latest.json`):
+
+```bash
+node scripts/sync-addresses-from-broadcast.mjs --chain 84532 --erc8004 0x8004A818BFB912233c491871b3d84c89A494BD9e
+```
+
+Then set server `RPC_URL` or `ALCHEMY_API_KEY` to Base Sepolia and optional contract overrides (`DCT_REGISTRY_ADDRESS`, etc.) — see `server/.env.example`.
+
+Committed templates: `server/addresses.base-sepolia.json` and `client/src/addresses.base-sepolia.json` (official ERC-8004 only; fill DCT proxies after deploy or use env overrides).
+
+**End-to-end demo (new wallet → ERC-8004 → Biscuit → registry → enforcer → revoke + Postgres audit):** from repo root, `./scripts/demo-onchain.sh` (loads `server/.env`). Or `cd server && npm run demo:onchain`.
+
+### Local Anvil
+
+```bash
+anvil
+export PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+export DEPLOY_LOCAL_IDENTITY_REGISTRY=true
+forge script script/DeployDCT.s.sol:DeployDCT --rpc-url http://127.0.0.1:8545 --broadcast
+node scripts/sync-addresses-from-broadcast.mjs --chain 31337
+```
+
+Use **proxy addresses** from logs or the sync script (not implementation addresses). For a second network, set `ADDRESSES_FILE` and matching `RPC_URL`.
 
 Upgrades (owner only): call `upgradeToAndCall` on the proxy via the implementation’s `UUPSUpgradeable` interface, or use OpenZeppelin upgrades tooling.
 
 ## MetaMask Delegation Framework
 
-See [DELEGATION_FRAMEWORK.md](./DELEGATION_FRAMEWORK.md). This repo ships `DCTEnforcer` for direct validation; wiring a `CaveatEnforcer` subclass for DelegationManager is a follow-up using `forge install MetaMask/delegation-framework`.
+See [DELEGATION_FRAMEWORK.md](./DELEGATION_FRAMEWORK.md). After `DCTRegistry` is deployed, deploy **`DCTCaveatEnforcer`** (checks `isRevoked` in `beforeHook`):
+
+```bash
+export DCT_REGISTRY_ADDRESS=<DCTRegistry proxy>
+npm run deploy:caveat
+```
+
+Then set `DCT_CAVEAT_ENFORCER_ADDRESS` or add the address to `server/addresses.json`. The API exposes **`GET /api/integrations/delegation-framework`** and **`POST /api/aa/execute-scope`** (ERC-4337 + Pimlico).

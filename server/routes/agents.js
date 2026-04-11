@@ -4,6 +4,7 @@
 
 import express from "express";
 import { getERC8004, getRegistry, getSigner, ethers, loadAddresses } from "../lib/blockchain.js";
+import { audit } from "../lib/audit.js";
 
 const router = express.Router();
 
@@ -112,9 +113,16 @@ router.post("/register", async (req, res) => {
       return res.status(500).json({ error: "Could not parse registration event" });
     }
 
+    const agentId = parsed.args.agentId.toString();
+    await audit(
+      "agent.register",
+      { agentId, txHash: receipt.hash, blockNumber: receipt.blockNumber, variant },
+      req
+    );
+
     res.json({
       success: true,
-      agentId: parsed.args.agentId.toString(),
+      agentId,
       txHash: receipt.hash,
       blockNumber: receipt.blockNumber,
     });

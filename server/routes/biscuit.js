@@ -13,6 +13,7 @@ import {
   inspectToken,
   getRootPublicKey,
 } from "../lib/dct-sdk.js";
+import { audit } from "../lib/audit.js";
 
 const router = express.Router();
 
@@ -33,6 +34,8 @@ router.post("/mint", (req, res) => {
       maxDepth: maxDepth || 3,
       expiresAt,
     });
+
+    await audit("biscuit.mint", { agentId: agentId || "0", revocationId: result.revocationId }, req);
 
     res.json({
       success: true,
@@ -68,6 +71,8 @@ router.post("/attenuate", (req, res) => {
       maxDepth,
     });
 
+    await audit("biscuit.attenuate", { childAgentId: childAgentId || "0", revocationId: result.revocationId }, req);
+
     res.json({
       success: true,
       token: result.serialized,
@@ -90,6 +95,7 @@ router.post("/authorize", (req, res) => {
   try {
     const { token, toolName, spendAmount, agentTokenId } = req.body;
     const result = authorizeToken(token, toolName, spendAmount || 0, agentTokenId);
+    await audit("biscuit.authorize", { toolName, agentTokenId, authorized: result?.authorized }, req);
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });
