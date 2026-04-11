@@ -1,8 +1,9 @@
 {
   "ERC8004IdentityRegistry": "0x8004A818BFB912233c491871b3d84c89A494BD9e",
-  "NotaryAttestationVerifier": "",
-  "DCTRegistry": "",
-  "DCTEnforcer": "",
+  "NotaryAttestationVerifier": "0x58874114f6c28c1c782161ed0385680f4d26c558",
+  "DCTRegistry": "0x2cec268a5934bfa5aa7f973ac7accf8ac17b89cf",
+  "DCTEnforcer": "0x256a633fa2c990a64ec4adf79685f59490a241f8",
+  "DCTCaveatEnforcer": "0x8e4c74b1a26663ba734fbeb7a7cc68204cf1eb68",
   "identityRegistryVariant": "official",
   "chainId": 84532,
   "network": "base-sepolia",

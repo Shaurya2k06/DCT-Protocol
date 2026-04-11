@@ -154,32 +154,32 @@
       "name": "validateAction",
       "inputs": [
         {
-          "name": "revocationId",
+          "name": "",
           "type": "bytes32",
           "internalType": "bytes32"
         },
         {
-          "name": "agentTokenId",
+          "name": "",
           "type": "uint256",
           "internalType": "uint256"
         },
         {
-          "name": "toolHash",
+          "name": "",
           "type": "bytes32",
           "internalType": "bytes32"
         },
         {
-          "name": "spendAmount",
+          "name": "",
           "type": "uint256",
           "internalType": "uint256"
         },
         {
-          "name": "tlsnAttestation",
+          "name": "",
           "type": "bytes",
           "internalType": "bytes"
         },
         {
-          "name": "redeemer",
+          "name": "",
           "type": "address",
           "internalType": "address"
         }
@@ -191,7 +191,7 @@
           "internalType": "bool"
         }
       ],
-      "stateMutability": "nonpayable"
+      "stateMutability": "pure"
     },
     {
       "type": "function",

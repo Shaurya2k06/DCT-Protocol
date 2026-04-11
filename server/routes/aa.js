@@ -48,7 +48,7 @@ router.post("/execute-scope", async (req, res) => {
 
     if (!tls || tls === "0x") {
       const url = req.body.url;
-      if (url && (process.env.TLSN_PROVER_URL || process.env.TLSN_NOTARY_URL)) {
+      if (url && process.env.TLSN_PROVER_URL?.trim()) {
         try {
           const proved = await proveAndAttest({ url, toolName });
           tls = proved.inlineAttestation;

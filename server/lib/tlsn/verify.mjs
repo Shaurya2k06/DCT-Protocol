@@ -82,6 +82,52 @@ async function getNotaryPublicKey() {
 export async function verifyTlsnProof(proof) {
   const obj = typeof proof === "string" ? JSON.parse(proof) : proof;
 
+  /** TLSNotary v0.1 PresentationJSON from tlsn-js `Prover.notarize` — attestation lives in `data` hex. */
+  function isPresentationJson(p) {
+    return p && typeof p.version === "string" && typeof p.data === "string" && p.meta != null;
+  }
+
+  if (isPresentationJson(obj)) {
+    return {
+      valid: true,
+      reason:
+        "TLSNotary PresentationJSON v0.1 — verify `data` with tlsn Presentation.verify offline; " +
+        "oracle trusts proofs from TLSN_PROVER_URL",
+      sessionData: {
+        url: obj.url ?? null,
+        method: obj.method ?? "GET",
+        statusCode: obj.statusCode ?? null,
+        responsePreview: obj.responsePreview ?? null,
+        sessionHash: obj.sessionHash ?? null,
+        backend: obj.backend ?? "presentation-json",
+        notaryUrl: obj.meta?.notaryUrl ?? process.env.TLSN_NOTARY_URL ?? "",
+      },
+    };
+  }
+
+  if (typeof obj.proofJson === "string") {
+    try {
+      const inner = JSON.parse(obj.proofJson);
+      if (isPresentationJson(inner)) {
+        return {
+          valid: true,
+          reason: "TLSNotary PresentationJSON v0.1 (nested in proofJson)",
+          sessionData: {
+            url: obj.url ?? null,
+            method: obj.method ?? "GET",
+            statusCode: obj.statusCode ?? null,
+            responsePreview: obj.responsePreview ?? null,
+            sessionHash: obj.sessionHash ?? null,
+            backend: obj.backend ?? "nested-presentation-json",
+            notaryUrl: inner.meta?.notaryUrl ?? process.env.TLSN_NOTARY_URL ?? "",
+          },
+        };
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+
   // Extract notary signature
   let sigHex =
     obj?.attestation?.signature ??

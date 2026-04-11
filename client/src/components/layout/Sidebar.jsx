@@ -1,25 +1,15 @@
 import { NavLink } from "react-router-dom";
 import { motion } from "framer-motion";
-import {
-  LayoutDashboard,
-  Users,
-  GitBranch,
-  Play,
-  Shield,
-  ExternalLink,
-} from "lucide-react";
+import { Shield, Play, ExternalLink } from "lucide-react";
 
 const navItems = [
-  { to: "/", icon: LayoutDashboard, label: "Dashboard" },
-  { to: "/agents", icon: Users, label: "Agents" },
-  { to: "/delegations", icon: GitBranch, label: "Delegations" },
-  { to: "/demo", icon: Play, label: "Live Demo" },
+  { to: "/", label: "TLSNotary", icon: Shield, end: true },
+  { to: "/demo", label: "On-chain demo", icon: Play, end: false },
 ];
 
 export default function Sidebar() {
   return (
     <aside className="fixed left-0 top-0 bottom-0 w-64 glass-strong z-50 flex flex-col">
-      {/* Logo */}
       <div className="p-6 border-b border-white/10">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[hsl(199,89%,48%)] to-[hsl(265,89%,65%)] flex items-center justify-center glow-blue">
@@ -34,13 +24,12 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* Navigation */}
       <nav className="flex-1 p-4 space-y-1">
         {navItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
-            end={item.to === "/"}
+            end={item.end}
             className={({ isActive }) =>
               `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 group ${
                 isActive
@@ -72,12 +61,11 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* Footer */}
       <div className="p-4 border-t border-white/10 space-y-3">
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[hsl(142,76%,36%)]/10">
-          <div className="w-2 h-2 rounded-full bg-[hsl(142,76%,36%)] animate-pulse" />
-          <span className="text-xs text-[hsl(142,76%,36%)]">Base Sepolia</span>
-        </div>
+        <p className="text-[10px] text-muted-foreground px-3 leading-relaxed">
+          Real TLSNotary proofs run in the browser (tlsn-js). The terminal script uses oracle signing unless you add a
+          separate prover API.
+        </p>
         <a
           href="https://sepolia.basescan.org"
           target="_blank"
@@ -85,7 +73,7 @@ export default function Sidebar() {
           className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors"
         >
           <ExternalLink className="w-3 h-3" />
-          BaseScan Explorer
+          BaseScan
         </a>
       </div>
     </aside>

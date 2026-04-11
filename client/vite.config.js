@@ -13,4 +13,9 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  // If tlsn-wasm errors on SharedArrayBuffer, try COOP+COEP (may break Google Fonts):
+  // server: { headers: { 'Cross-Origin-Opener-Policy': 'same-origin', 'Cross-Origin-Embedder-Policy': 'require-corp' } },
+  optimizeDeps: {
+    exclude: ['tlsn-js'],
+  },
 })

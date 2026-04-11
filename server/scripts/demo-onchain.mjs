@@ -192,7 +192,7 @@ async function main() {
 
   // ── TLSNotary step ────────────────────────────────────────────────────────
   // Prove a real HTTP call, then attest the proof for on-chain use.
-  // Uses TLSN_PROVER_URL (Docker prover API) or oracle-only fallback.
+  // Uses TLSN_PROVER_URL (HTTP POST /prove → PresentationJSON) or oracle-only fallback.
   const toolHash = ethers.keccak256(ethers.toUtf8Bytes(toolName));
 
   // Public endpoint to prove (safe, no auth required).
@@ -202,8 +202,7 @@ async function main() {
   let tlsnProofHash = null;
   let tlsnCommitAttestation = null;
 
-  const tlsnEnabled =
-    process.env.TLSN_PROVER_URL?.trim() || process.env.TLSN_NOTARY_URL?.trim();
+  const tlsnEnabled = !!process.env.TLSN_PROVER_URL?.trim();
 
   if (tlsnEnabled) {
     console.log("\n[7a] TLSNotary: proving HTTP call via MPC …");
@@ -223,7 +222,7 @@ async function main() {
     }
   } else {
     console.log("\n[7a] TLSNotary: TLSN_PROVER_URL not set → oracle-only ECDSA attestation");
-    console.log("     (Start docker-compose.tlsn.yml + set TLSN_PROVER_URL for real MPC proofs)");
+    console.log("     (Run a prover that POST /prove → PresentationJSON; set TLSN_PROVER_URL. Notary: docker-compose.tlsn.yml)");
     tls = await signNotaryAttestation(toolHash);
   }
   if (!String(tls).startsWith("0x")) tls = `0x${tls}`;

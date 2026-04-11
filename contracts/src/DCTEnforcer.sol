@@ -85,42 +85,19 @@ contract DCTEnforcer is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
+    /**
+     * @notice Deprecated — always reverts. Scope (tool, spend, expiry) cannot be verified without
+     *         the full Scope tuple that was committed at registration; use `validateActionWithScope`.
+     */
     function validateAction(
-        bytes32 revocationId,
-        uint256 agentTokenId,
-        bytes32 toolHash,
-        uint256 spendAmount,
-        bytes calldata tlsnAttestation,
-        address redeemer
-    ) external returns (bool) {
-        if (registry.isRevoked(revocationId)) {
-            emit ActionRejected(revocationId, agentTokenId, "DCT: token revoked");
-            registry.recordViolation(agentTokenId);
-            return false;
-        }
-
-        if (erc8004.ownerOf(agentTokenId) != redeemer) {
-            emit ActionRejected(revocationId, agentTokenId, "DCT: wrong agent");
-            return false;
-        }
-
-        bytes32 committed = registry.scopeCommitments(revocationId);
-        if (committed == bytes32(0)) {
-            emit ActionRejected(revocationId, agentTokenId, "DCT: unknown token");
-            return false;
-        }
-
-        if (tlsnAttestation.length > 0) {
-            if (!tlsnVerifier.verify(tlsnAttestation, toolHash)) {
-                emit ActionRejected(revocationId, agentTokenId, "DCT: invalid TLS attestation");
-                registry.recordViolation(agentTokenId);
-                return false;
-            }
-        }
-
-        registry.recordSuccess(agentTokenId);
-        emit ActionValidated(revocationId, agentTokenId, toolHash, spendAmount);
-        return true;
+        bytes32,
+        uint256,
+        bytes32,
+        uint256,
+        bytes calldata,
+        address
+    ) external pure returns (bool) {
+        revert("DCT: use validateActionWithScope");
     }
 
     function validateActionWithScope(

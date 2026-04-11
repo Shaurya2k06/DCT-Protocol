@@ -26,9 +26,7 @@ const router = express.Router();
  */
 router.get("/config", (req, res) => {
   const addrs = loadAddresses();
-  const backendConfigured = !!(
-    process.env.TLSN_PROVER_URL || process.env.TLSN_NOTARY_URL
-  );
+  const backendConfigured = !!process.env.TLSN_PROVER_URL?.trim();
   res.json({
     enabled: backendConfigured,
     proverUrl: process.env.TLSN_PROVER_URL || null,
@@ -36,8 +34,8 @@ router.get("/config", (req, res) => {
     oracle: getOracleAddress(),
     verifierAddress: addrs.NotaryAttestationVerifier || null,
     note: backendConfigured
-      ? "TLSNotary prover configured — real proofs available"
-      : "No TLSN_PROVER_URL set. Start docker-compose.tlsn.yml or set TLSN_NOTARY_URL for tlsn-js. Inline attestation (ECDSA-only) is the fallback.",
+      ? "TLSN_PROVER_URL set — POST /prove prover API is used for MPC proofs"
+      : "No TLSN_PROVER_URL. docker-compose.tlsn.yml starts the notary only; run a separate prover (see tlsnotary/tlsn examples) or use oracle-only ECDSA attestation.",
   });
 });
 

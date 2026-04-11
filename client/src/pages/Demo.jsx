@@ -394,8 +394,8 @@ export default function Demo() {
   return (
     <div className="space-y-6">
       <Header
-        title="Live Demo"
-        subtitle="5-minute guided demo — real Biscuit tokens + real Base Sepolia transactions"
+        title="On-chain demo"
+        subtitle="Biscuit + Base Sepolia via API — not in-browser TLSNotary; use TLSNotary in the sidebar for real MPC proofs"
       />
 
       {/* Progress Bar */}

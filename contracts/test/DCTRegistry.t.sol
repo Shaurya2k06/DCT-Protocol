@@ -176,6 +176,144 @@ contract DCTRegistryTest is Test {
         assertTrue(tlsn.verify(att, toolHash));
     }
 
+    function test_ValidateActionDeprecated() public {
+        vm.expectRevert(bytes("DCT: use validateActionWithScope"));
+        enforcer.validateAction(bytes32(0), 0, bytes32(0), 0, "", address(0));
+    }
+
+    function test_ValidateActionWithScope_WrongTool() public {
+        bytes32 rootId = keccak256("wrong-tool");
+        bytes32 goodTool = keccak256("allowed");
+        bytes32 badTool = keccak256("forbidden");
+        uint64 exp = uint64(block.timestamp + 3600);
+        Scope memory scope = Scope({
+            allowedTools: _singleToolHash(goodTool),
+            spendLimitUsdc: 50_000_000,
+            maxDepth: 3,
+            expiresAt: exp
+        });
+
+        vm.prank(a1);
+        registry.registerDelegation(bytes32(0), rootId, scope, id1);
+
+        vm.prank(a1);
+        bool ok = enforcer.validateActionWithScope(
+            rootId, id1, badTool, 1_000_000, "", a1, scope.allowedTools, scope.spendLimitUsdc, scope.maxDepth, exp
+        );
+        assertFalse(ok);
+    }
+
+    function test_ValidateActionWithScope_Overspend() public {
+        bytes32 rootId = keccak256("overspend");
+        bytes32 toolHash = keccak256("t");
+        uint64 exp = uint64(block.timestamp + 3600);
+        Scope memory scope = Scope({
+            allowedTools: _singleToolHash(toolHash),
+            spendLimitUsdc: 1_000_000,
+            maxDepth: 3,
+            expiresAt: exp
+        });
+
+        vm.prank(a1);
+        registry.registerDelegation(bytes32(0), rootId, scope, id1);
+
+        vm.prank(a1);
+        bool ok = enforcer.validateActionWithScope(
+            rootId, id1, toolHash, 2_000_000, "", a1, scope.allowedTools, scope.spendLimitUsdc, scope.maxDepth, exp
+        );
+        assertFalse(ok);
+    }
+
+    function test_ValidateActionWithScope_Expired() public {
+        bytes32 rootId = keccak256("expired");
+        bytes32 toolHash = keccak256("t");
+        uint64 exp = uint64(block.timestamp + 100);
+        Scope memory scope = Scope({
+            allowedTools: _singleToolHash(toolHash),
+            spendLimitUsdc: 50_000_000,
+            maxDepth: 3,
+            expiresAt: exp
+        });
+
+        vm.prank(a1);
+        registry.registerDelegation(bytes32(0), rootId, scope, id1);
+
+        vm.warp(block.timestamp + 200);
+
+        vm.prank(a1);
+        bool ok = enforcer.validateActionWithScope(
+            rootId, id1, toolHash, 1_000_000, "", a1, scope.allowedTools, scope.spendLimitUsdc, scope.maxDepth, exp
+        );
+        assertFalse(ok);
+    }
+
+    function test_ValidateActionWithScope_ScopeMismatch() public {
+        bytes32 rootId = keccak256("scope-mismatch");
+        bytes32 toolHash = keccak256("t");
+        uint64 exp = uint64(block.timestamp + 3600);
+        Scope memory regScope = Scope({
+            allowedTools: _singleToolHash(toolHash),
+            spendLimitUsdc: 50_000_000,
+            maxDepth: 3,
+            expiresAt: exp
+        });
+
+        vm.prank(a1);
+        registry.registerDelegation(bytes32(0), rootId, regScope, id1);
+
+        // Pass a different maxDepth than registered — commitment will not match
+        vm.prank(a1);
+        bool ok = enforcer.validateActionWithScope(
+            rootId,
+            id1,
+            toolHash,
+            1_000_000,
+            "",
+            a1,
+            regScope.allowedTools,
+            regScope.spendLimitUsdc,
+            uint8(7),
+            exp
+        );
+        assertFalse(ok);
+    }
+
+    function test_Revoke_AncestorOwner() public {
+        bytes32 rootId = keccak256("anc-root");
+        bytes32 childId = keccak256("anc-child");
+        Scope memory scope = Scope({
+            allowedTools: _singleTool("x"),
+            spendLimitUsdc: 50_000_000,
+            maxDepth: 3,
+            expiresAt: uint64(block.timestamp + 3600)
+        });
+
+        vm.prank(a1);
+        registry.registerDelegation(bytes32(0), rootId, scope, id1);
+
+        Scope memory cScope = scope;
+        cScope.spendLimitUsdc = 10_000_000;
+        vm.prank(a2);
+        registry.registerDelegation(rootId, childId, cScope, id2);
+
+        // a1 (ancestor owner) revokes downstream token held by id2
+        vm.prank(a1);
+        registry.revoke(childId, id1);
+
+        assertTrue(registry.isRevoked(childId));
+    }
+
+    function test_RecordSuccess_RevertNotEnforcer() public {
+        vm.expectRevert("DCT: only enforcer");
+        registry.recordSuccess(id1);
+    }
+
+    function test_MaxGrantableSpend_ColdStart() public view {
+        uint256 parentLimit = 10_000_000;
+        uint256 g = registry.maxGrantableSpend(id2, parentLimit);
+        assertEq(g, parentLimit / 10);
+    }
+
     function _singleTool(string memory name) internal pure returns (bytes32[] memory arr) {
         arr = new bytes32[](1);
         arr[0] = keccak256(bytes(name));

@@ -480,7 +480,16 @@ contract DCTEnforcer is CaveatEnforcer {
 
 Reclaim Protocol and browser-based zkTLS tools are designed for human-authenticated sessions: a user logs into a website, the tool intercepts the TLS session via proxy, and generates a proof of what the website returned. This requires a human browser context.
 
-Autonomous agents make direct API calls with API keys — no browser, no human session. The correct tool is TLSNotary's Rust implementation.
+Autonomous agents make direct API calls with API keys — no browser, no human session. For **embedded, long-lived agents**, the TLSNotary **Rust** `tlsn` crate is the natural choice: it runs in-process and avoids a browser TLS context.
+
+**This repository** aligns the protocol with that reality as follows:
+
+- **Notary server:** run the official notary image (see `docker-compose.tlsn.yml`). The notary is chain-agnostic TLSNotary infrastructure — agents and servers connect to it the same way.
+- **Server-side proving (no browser):** the Node API under `server/lib/tlsn/` performs TLSNotary flows suitable for backend and autonomous callers. When `TLSN_PROVER_URL` is set, `POST /api/delegation/execute` can obtain a real proof and compress it to the **65-byte inline attestation** consumed by `NotaryAttestationVerifier` / `DCTEnforcer.validateActionWithScope`. That path does not require `tlsn-js` or a browser.
+- **Interactive demo:** the Vite client may use `tlsn-js` in the browser for **dashboard demos** only; it is not the only supported prover.
+- **On-chain verification** is unchanged: the enforcer checks the notary-backed attestation against the expected tool hash.
+
+For new greenfield agent binaries, prefer the Rust `tlsn` crate; for this stack, use the notary + Node TLSN integration above.
 
 The `tlsn` crate provides the core protocol for generating and verifying proofs of TLS sessions. A prover can demonstrate to a verifier that specific data was exchanged with a TLS server, without revealing the full transcript.
 

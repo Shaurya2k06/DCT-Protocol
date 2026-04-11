@@ -23,7 +23,7 @@ const router = express.Router();
  *
  * Body: { agentId, allowedTools, spendLimitUsdc, maxDepth, expiresAt }
  */
-router.post("/mint", (req, res) => {
+router.post("/mint", async (req, res) => {
   try {
     const { agentId, allowedTools, spendLimitUsdc, maxDepth, expiresAt } = req.body;
 
@@ -57,7 +57,7 @@ router.post("/mint", (req, res) => {
  *
  * Body: { parentTokenB64, childAgentId, allowedTools, spendLimitUsdc, expiresAt }
  */
-router.post("/attenuate", (req, res) => {
+router.post("/attenuate", async (req, res) => {
   try {
     const { parentTokenB64, childAgentId, allowedTools, spendLimitUsdc, expiresAt, maxDepth } =
       req.body;
@@ -91,7 +91,7 @@ router.post("/attenuate", (req, res) => {
  *
  * Body: { token, toolName, spendAmount, agentTokenId }
  */
-router.post("/authorize", (req, res) => {
+router.post("/authorize", async (req, res) => {
   try {
     const { token, toolName, spendAmount, agentTokenId } = req.body;
     const result = authorizeToken(token, toolName, spendAmount || 0, agentTokenId);

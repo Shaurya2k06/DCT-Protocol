@@ -2,7 +2,7 @@
  * TLSNotary integration — full pipeline.
  *
  * proveAndAttest(params) is the single entry point for:
- *   1. Generating a real TLSNotary proof (via prover API or tlsn-js WASM)
+ *   1. Generating a real TLSNotary proof (POST /prove at TLSN_PROVER_URL)
  *   2. Verifying the notary's ed25519 signature
  *   3. Issuing two ECDSA attestations for on-chain use:
  *        • inlineAttestation  → DCTEnforcer.validateActionWithScope

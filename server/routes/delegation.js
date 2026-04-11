@@ -160,7 +160,7 @@ router.post("/execute", async (req, res) => {
     let tlsnProof = null;
 
     if (!tls || tls === "0x") {
-      if (url && (process.env.TLSN_PROVER_URL || process.env.TLSN_NOTARY_URL)) {
+      if (url && process.env.TLSN_PROVER_URL?.trim()) {
         // Real TLSNotary proof — prove the HTTP call, then attest
         try {
           const proved = await proveAndAttest({ url, toolName });
@@ -263,17 +263,29 @@ router.get("/status/:revocationId", async (req, res) => {
 
 /**
  * POST /api/delegation/validate
- * Validate an action through DCTEnforcer (legacy endpoint, uses execute internally).
+ * Same on-chain checks as execute — must use validateActionWithScope (full Scope tuple).
+ * If the server has the Biscuit in its store, we delegate to execute(); otherwise the body must
+ * include allowedTools, spendLimitUsdc, maxDepth, expiresAt matching on-chain registration.
  */
 router.post("/validate", async (req, res) => {
   try {
-    const { revocationId, agentTokenId, toolName, spendAmount, tlsAttestation } = req.body;
+    const {
+      revocationId,
+      agentTokenId,
+      toolName,
+      spendAmount,
+      tlsAttestation,
+      allowedTools: scopeTools,
+      spendLimitUsdc,
+      maxDepth,
+      expiresAt,
+    } = req.body;
 
     const toolHash = ethers.keccak256(ethers.toUtf8Bytes(toolName));
     let tls = tlsAttestation;
     const notaryPk = process.env.NOTARY_PRIVATE_KEY;
     if ((!tls || tls === "0x") && notaryPk) {
-      tls = signNotaryAttestation(toolHash, notaryPk);
+      tls = await signNotaryAttestation(toolHash);
     }
 
     const meta = getTokenByRevocationId(revocationId);
@@ -300,16 +312,35 @@ router.post("/validate", async (req, res) => {
       return res.json(result);
     }
 
+    if (
+      !Array.isArray(scopeTools) ||
+      scopeTools.length === 0 ||
+      spendLimitUsdc === undefined ||
+      maxDepth === undefined ||
+      expiresAt === undefined
+    ) {
+      return res.status(400).json({
+        error:
+          "Missing scope: pass the same allowedTools, spendLimitUsdc, maxDepth, expiresAt as registerDelegation, " +
+          "or use a revocationId the server has seen (Biscuit in store), or call POST /api/delegation/execute with tokenB64.",
+      });
+    }
+
     const enforcer = getEnforcer();
     const signerAddr = await getSigner().getAddress();
+    const allowedTools = scopeTools.map((t) => ethers.keccak256(ethers.toUtf8Bytes(String(t))));
 
-    const tx = await enforcer.validateAction(
+    const tx = await enforcer.validateActionWithScope(
       revocationId,
       BigInt(agentTokenId),
       toolHash,
       BigInt(spendAmount || 0),
       tls || "0x",
-      signerAddr
+      signerAddr,
+      allowedTools,
+      BigInt(spendLimitUsdc),
+      Number(maxDepth),
+      BigInt(expiresAt)
     );
     const receipt = await tx.wait();
 
