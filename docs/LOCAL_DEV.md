@@ -84,6 +84,7 @@ For **Base Sepolia** (testnet), prefer **`INFURA_PROJECT_ID`** in `server/.env` 
 
 ## TLSNotary — what is `TLSN_PROVER_URL`?
 
+- The **`/tlsn`** page in the Vite app calls **`POST /api/tlsn/prove`** on the DCT server (no browser `tlsn-js`). The server uses **`TLSN_PROVER_URL`** internally.
 - **`TLSN_PROVER_URL`** is the base URL of a small HTTP service that implements **`POST /prove`** (see `server/lib/tlsn/prover.mjs`). The main API server calls it when generating TLS proofs for `POST /api/tlsn/prove` and `POST /api/delegation/execute` (when a URL is supplied).
 - It is **not** the notary. The **notary** is the TLSNotary MPC server (e.g. `http://127.0.0.1:7047` from Docker).
 

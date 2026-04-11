@@ -45,6 +45,12 @@ cd server && npm run tlsn-prover
 # → prover on :8090
 ```
 
+### TLSNotary — browser vs server
+
+The upstream **`tlsn-js`** npm package is **deprecated**; for a maintained **browser** experience see **[tlsn-extension](https://github.com/tlsnotary/tlsn-extension)**.
+
+This repo’s **`/tlsn`** dashboard calls **`POST /api/tlsn/prove`** (same pipeline as the rest of the API): the Node server forwards to **`TLSN_PROVER_URL`** (`POST /prove`). Run **`cd server && npm run tlsn-prover`** for a local dev prover, or wire a real Rust tlsn prover. No browser WASM and no `tlsn-js` dependency.
+
 ---
 
 ## Contract addresses — Base Sepolia (chainId 84532)

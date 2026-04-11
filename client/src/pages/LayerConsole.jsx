@@ -8,7 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Save, Plus, Trash2, Link2, Loader2, CheckCircle2, AlertCircle,
-  LayoutGrid, Server,
+  LayoutGrid, Server, Play,
 } from "lucide-react";
 import LayerWorkflowCanvas from "../components/layer/LayerWorkflowCanvas";
 import {
@@ -20,7 +20,20 @@ import {
   setOpenClawPem,
   getOpenClawBearer,
   setOpenClawBearer,
+  getAgentBearer,
+  setAgentBearer,
 } from "../lib/layerLocal";
+import {
+  orderWorkflowAgents,
+  pickAssistantText,
+  postOpenClawChat,
+} from "../lib/openClawChat";
+
+/** Stable key for localStorage bearer (each OpenClaw tunnel can differ). */
+function bearerKeyForAgentNode(node) {
+  if (!node || node.type !== "dctAgent") return "";
+  return String(node.data?.agentSlot || `node:${node.id}`).trim();
+}
 
 const DEFAULT_NODES = [
   {
@@ -32,9 +45,12 @@ const DEFAULT_NODES = [
   {
     id: "dc-a1",
     type: "dctAgent",
-    position: { x: 200, y: 180 },
+    position: { x: 200, y: 140 },
     data: {
       title: "Orchestrator",
+      agentSlot: "orchestrator",
+      openClawBaseUrl: "",
+      openClawModel: "openclaw/main",
       spendLimitUsdc: 50_000_000,
       maxDepth: 3,
       allowedTools: "research,web_fetch,x402_pay",
@@ -44,13 +60,31 @@ const DEFAULT_NODES = [
   {
     id: "dc-a2",
     type: "dctAgent",
-    position: { x: 200, y: 380 },
+    position: { x: 200, y: 300 },
     data: {
-      title: "Worker",
+      title: "Research",
+      agentSlot: "research",
+      openClawBaseUrl: "",
+      openClawModel: "openclaw/main",
       spendLimitUsdc: 10_000_000,
       maxDepth: 2,
-      allowedTools: "web_fetch",
+      allowedTools: "web_fetch,research",
       expiresHours: 72,
+    },
+  },
+  {
+    id: "dc-a3",
+    type: "dctAgent",
+    position: { x: 200, y: 460 },
+    data: {
+      title: "Payment",
+      agentSlot: "payment",
+      openClawBaseUrl: "",
+      openClawModel: "openclaw/main",
+      spendLimitUsdc: 2_000_000,
+      maxDepth: 1,
+      allowedTools: "x402_pay",
+      expiresHours: 48,
     },
   },
 ];
@@ -58,7 +92,24 @@ const DEFAULT_NODES = [
 const DEFAULT_EDGES = [
   { id: "e1", source: "dc-root", target: "dc-a1", animated: true },
   { id: "e2", source: "dc-a1", target: "dc-a2", animated: true },
+  { id: "e3", source: "dc-a2", target: "dc-a3", animated: true },
 ];
+
+function migrateAgentNodes(nodes) {
+  return nodes.map((n) => {
+    if (n.type !== "dctAgent") return n;
+    const d = n.data || {};
+    return {
+      ...n,
+      data: {
+        ...d,
+        agentSlot: d.agentSlot || `node:${n.id}`,
+        openClawBaseUrl: d.openClawBaseUrl ?? "",
+        openClawModel: d.openClawModel || "openclaw/main",
+      },
+    };
+  });
+}
 
 export default function LayerConsole() {
   const [ready, setReady] = useState(false);
@@ -73,6 +124,8 @@ export default function LayerConsole() {
 
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [chainBusy, setChainBusy] = useState(false);
+  const [chainLog, setChainLog] = useState([]);
   const [msg, setMsg] = useState(null);
 
   useEffect(() => {
@@ -91,7 +144,7 @@ export default function LayerConsole() {
           ? s.openClaw.authMode
           : "none");
         if (s.workflow?.nodes?.length) {
-          setNodes(s.workflow.nodes);
+          setNodes(migrateAgentNodes(s.workflow.nodes));
           setEdges(s.workflow.edges?.length ? s.workflow.edges : []);
         } else {
           setNodes(DEFAULT_NODES);
@@ -113,6 +166,16 @@ export default function LayerConsole() {
 
   const selected = nodes.find((n) => n.id === selectedId);
   const selectedAgent = selected?.type === "dctAgent" ? selected : null;
+  const selectedBearerKey = selectedAgent ? bearerKeyForAgentNode(selectedAgent) : "";
+
+  const [slotBearerInput, setSlotBearerInput] = useState("");
+  useEffect(() => {
+    if (!selectedBearerKey) {
+      setSlotBearerInput("");
+      return;
+    }
+    setSlotBearerInput(getAgentBearer(selectedBearerKey));
+  }, [selectedBearerKey, selectedId]);
 
   const patchAgent = useCallback(
     (patch) => {
@@ -139,6 +202,9 @@ export default function LayerConsole() {
         position: { x: 160 + (nAgents % 3) * 40, y: 140 + nAgents * 28 },
         data: {
           title: `Agent ${nAgents + 1}`,
+          agentSlot: `custom-${id.slice(0, 8)}`,
+          openClawBaseUrl: "",
+          openClawModel: "openclaw/main",
           spendLimitUsdc: 5_000_000,
           maxDepth: 3,
           allowedTools: "research,web_fetch",
@@ -161,6 +227,110 @@ export default function LayerConsole() {
   const persistLocalSecrets = () => {
     setOpenClawPem(pemText.trim());
     setOpenClawBearer(bearer.trim());
+    if (selectedBearerKey) setAgentBearer(selectedBearerKey, slotBearerInput.trim());
+  };
+
+  const resolveAgentConnection = useCallback(
+    (agentNode) => {
+      const d = agentNode?.data || {};
+      const base = (d.openClawBaseUrl || openClawBase || "").trim().replace(/\/$/, "");
+      const slot = bearerKeyForAgentNode(agentNode);
+      const per = getAgentBearer(slot);
+      const tok = per || (authMode === "bearer" ? bearer.trim() : "");
+      const model = d.openClawModel || "openclaw/main";
+      return { base, bearer: tok, model };
+    },
+    [openClawBase, authMode, bearer]
+  );
+
+  const handlePingSelectedAgent = async () => {
+    if (!selectedAgent) return;
+    persistLocalSecrets();
+    const { base, bearer: tok, model } = resolveAgentConnection(selectedAgent);
+    if (!base) {
+      setMsg({ type: "err", text: "Set this agent’s OpenClaw base URL (or a global default)." });
+      return;
+    }
+    if (!tok) {
+      setMsg({ type: "err", text: "Set a bearer for this agent (or global bearer + auth mode)." });
+      return;
+    }
+    setTesting(true);
+    setMsg(null);
+    try {
+      const data = await postOpenClawChat({
+        baseUrl: base,
+        bearer: tok,
+        model,
+        messages: [{ role: "user", content: "Reply with exactly: pong" }],
+      });
+      const reply = pickAssistantText(data);
+      setMsg({
+        type: "ok",
+        text: `Chat OK — ${selectedAgent.data?.title || "agent"}: ${reply.slice(0, 200)}${reply.length > 200 ? "…" : ""}`,
+      });
+    } catch (e) {
+      setMsg({
+        type: "err",
+        text:
+          e.message ||
+          "Chat failed (CORS, wrong URL, or token). OpenClaw must allow browser CORS from this origin.",
+      });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const handleRunChainDemo = async () => {
+    persistLocalSecrets();
+    const agents = orderWorkflowAgents(nodes, edges);
+    if (agents.length === 0) {
+      setMsg({ type: "err", text: "Connect Gateway → agents in order (no agents reachable from the start node)." });
+      return;
+    }
+    setChainBusy(true);
+    setChainLog([]);
+    setMsg(null);
+    let prior = "";
+    try {
+      for (let i = 0; i < agents.length; i++) {
+        const a = agents[i];
+        const title = a.data?.title || `Agent ${i + 1}`;
+        const { base, bearer: tok, model } = resolveAgentConnection(a);
+        if (!base) {
+          setChainLog((log) => [...log, `✗ ${title}: missing OpenClaw base URL`]);
+          throw new Error(`"${title}" has no OpenClaw base URL (per-agent or global).`);
+        }
+        if (!tok) {
+          setChainLog((log) => [...log, `✗ ${title}: missing bearer`]);
+          throw new Error(`"${title}" has no bearer (per-agent field or global).`);
+        }
+        const userContent =
+          i === 0
+            ? `You are "${title}" in a delegated multi-agent workflow (${agents.length} steps). In one short sentence, state your role.`
+            : `Prior agent said:\n${prior.slice(0, 2_000)}\n\nYou are "${title}". In one or two sentences, how do you extend that in this chain?`;
+        setChainLog((log) => [...log, `→ ${title} …`]);
+        const data = await postOpenClawChat({
+          baseUrl: base,
+          bearer: tok,
+          model,
+          messages: [{ role: "user", content: userContent }],
+        });
+        prior = pickAssistantText(data);
+        setChainLog((log) => [
+          ...log,
+          `← ${title}: ${prior.slice(0, 360)}${prior.length > 360 ? "…" : ""}`,
+        ]);
+      }
+      setMsg({
+        type: "ok",
+        text: `Chain demo finished — ${agents.length} OpenClaw chat completion(s).`,
+      });
+    } catch (e) {
+      setMsg({ type: "err", text: e.message || String(e) });
+    } finally {
+      setChainBusy(false);
+    }
   };
 
   const handleSave = async () => {
@@ -238,19 +408,29 @@ export default function LayerConsole() {
             Layer console
           </h1>
           <p className="text-sm text-nb-ink/60 mt-1 max-w-xl">
-            Connect OpenClaw, design an agent workflow with spend and tool limits, then save.
-            The graph is stored on the DCT API; secrets never leave this browser.
+            Connect one OpenClaw URL + bearer per agent (e.g. three ngrok tunnels), chain Gateway → Orchestrator →
+            Research → Payment, then run the chat demo. Workflow metadata syncs to the API; tokens stay in
+            localStorage only.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
             onClick={handleTestOpenClaw}
-            disabled={testing}
+            disabled={testing || chainBusy}
             className="nb-btn-ghost text-sm"
           >
             {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
             Test /health
+          </button>
+          <button
+            type="button"
+            onClick={handleRunChainDemo}
+            disabled={chainBusy || testing}
+            className="nb-btn-secondary text-sm"
+          >
+            {chainBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+            Run OpenClaw chain
           </button>
           <button
             type="button"
@@ -263,6 +443,12 @@ export default function LayerConsole() {
           </button>
         </div>
       </header>
+
+      {chainLog.length > 0 && (
+        <div className="rounded-nb border-2 border-nb-ink bg-nb-card p-3 font-mono text-[11px] text-nb-ink/90 max-h-48 overflow-y-auto whitespace-pre-wrap">
+          {chainLog.join("\n")}
+        </div>
+      )}
 
       {msg && (
         <motion.div
@@ -292,7 +478,7 @@ export default function LayerConsole() {
               <h2 className="text-sm font-display font-bold text-nb-ink">OpenClaw</h2>
             </div>
             <label className="block text-[10px] font-display font-bold uppercase tracking-wider text-nb-ink/50 mb-1">
-              Base URL
+              Default base URL (fallback if an agent field is empty)
             </label>
             <input
               className="nb-input font-mono mb-3"
@@ -413,6 +599,53 @@ export default function LayerConsole() {
                     onChange={(e) => patchAgent({ allowedTools: e.target.value })}
                   />
                 </div>
+                <div>
+                  <label className="text-[10px] font-display font-bold uppercase text-nb-ink/50">
+                    OpenClaw base (this agent)
+                  </label>
+                  <input
+                    className="nb-input mt-1 font-mono text-[11px]"
+                    placeholder="https://….ngrok-free.dev"
+                    value={selectedAgent.data?.openClawBaseUrl ?? ""}
+                    onChange={(e) => patchAgent({ openClawBaseUrl: e.target.value })}
+                  />
+                  <p className="text-[9px] text-nb-ink/45 mt-0.5">
+                    Slot <span className="font-mono">{selectedBearerKey}</span> — bearer stored locally per slot.
+                  </p>
+                </div>
+                <div>
+                  <label className="text-[10px] font-display font-bold uppercase text-nb-ink/50">Model</label>
+                  <input
+                    className="nb-input mt-1 font-mono text-xs"
+                    value={selectedAgent.data?.openClawModel ?? "openclaw/main"}
+                    onChange={(e) => patchAgent({ openClawModel: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-display font-bold uppercase text-nb-ink/50">
+                    Bearer (this agent — local only)
+                  </label>
+                  <input
+                    type="password"
+                    className="nb-input mt-1 font-mono text-[11px]"
+                    autoComplete="off"
+                    value={slotBearerInput}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setSlotBearerInput(v);
+                      if (selectedBearerKey) setAgentBearer(selectedBearerKey, v);
+                    }}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handlePingSelectedAgent}
+                  disabled={testing || chainBusy}
+                  className="nb-btn-ghost text-xs w-full"
+                >
+                  {testing ? <Loader2 className="w-3.5 h-3.5 animate-spin inline" /> : null}{" "}
+                  Ping chat (this agent)
+                </button>
                 <button
                   type="button"
                   onClick={removeSelected}

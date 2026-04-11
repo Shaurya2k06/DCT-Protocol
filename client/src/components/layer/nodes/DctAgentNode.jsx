@@ -3,9 +3,21 @@ import { Handle, Position } from "@xyflow/react";
 /**
  * One agent in the delegation workflow — limits mirror DCT scope fields.
  */
+function hostHint(url) {
+  if (!url || typeof url !== "string") return "";
+  try {
+    const u = new URL(url.startsWith("http") ? url : `https://${url}`);
+    return u.host;
+  } catch {
+    return url.slice(0, 28);
+  }
+}
+
 export default function DctAgentNode({ data, selected }) {
   const spend = Number(data?.spendLimitUsdc ?? 0);
   const usd = spend >= 1e6 ? (spend / 1e6).toFixed(2) : String(spend);
+  const oc = data?.openClawBaseUrl?.trim();
+  const host = oc ? hostHint(oc) : null;
 
   return (
     <div
@@ -26,6 +38,11 @@ export default function DctAgentNode({ data, selected }) {
         {(data?.allowedTools || "tools…").slice(0, 42)}
         {(data?.allowedTools || "").length > 42 ? "…" : ""}
       </p>
+      {host && (
+        <p className="mt-0.5 truncate text-[8px] text-emerald-700/90 font-mono" title={oc}>
+          {host}
+        </p>
+      )}
       <Handle type="source" position={Position.Bottom} className="!bg-emerald-600 !border-0" />
     </div>
   );

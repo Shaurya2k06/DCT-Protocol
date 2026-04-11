@@ -75,4 +75,12 @@ export const getLayerSnapshot = () =>
 export const saveLayerSnapshot = (body) =>
   api.post("/api/layer/snapshot", body).then((r) => r.data);
 
+// ── TLSNotary (server-side prover — no browser tlsn-js) ──
+export const getTlsnConfig = () =>
+  api.get("/api/tlsn/config").then((r) => r.data);
+
+/** @param {{ url: string, toolName?: string, method?: string, headers?: object, body?: string }} body */
+export const proveTlsn = (body) =>
+  api.post("/api/tlsn/prove", body, { timeout: 120_000 }).then((r) => r.data);
+
 export default api;

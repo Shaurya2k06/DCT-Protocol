@@ -8,7 +8,7 @@
  *   Phase 2  — root Biscuit token minted (off-chain, timed)
  *   Phase 3  — Orchestrator → Research delegation
  *   Phase 4  — Research → Payment delegation
- *   Phase 5  — Successful executions: Research web_fetch + Payment x402_pay (enforcer events for trust)
+ *   Phase 5  — Research web_fetch on-chain (Biscuit stacks per-hop agent checks; no second hop execute here)
  *   Phase 6  — Off-chain scope violation (zero gas)
  *   Phase 7  — On-chain scope violation (revert)
  *   Phase 8  — Cascade revocation (single tx)
@@ -57,12 +57,27 @@ function txNorm(t) {
 }
 
 /** API / ethers sometimes return nested objects; avoid "[object Object]" in logs. */
-/** Prefer DCT three-signal composite (0–100); fall back to on-chain registry score×100. */
-function trustCompositePercent(t) {
+/** Off-chain DCT composite as 0–100; null if no profile (do not treat chain score as DCT). */
+function dctUiPercent(t) {
   if (t == null) return null;
-  if (t.dctCompositePercent != null) return Number(t.dctCompositePercent);
-  if (t.dctTrustProfile?.composite_score != null) return t.dctTrustProfile.composite_score * 100;
-  return Number(t.score ?? 0) * 100;
+  if (t.dctCompositePercent != null) return Math.min(100, Number(t.dctCompositePercent));
+  if (t.dctTrustProfile?.composite_score != null)
+    return Math.min(100, Number(t.dctTrustProfile.composite_score) * 100);
+  return null;
+}
+
+/** On-chain registry trust as multiple of 1e18 baseline (often ~1.0; can exceed after rewards). */
+function registryTrustMultiplier(t) {
+  if (t == null) return null;
+  return Number(t.score ?? 0);
+}
+
+/** Tree / badges: capped DCT %, else registry shown as pseudo-% capped at 100 (not labeled DCT). */
+function trustBarPercent(t) {
+  const d = dctUiPercent(t);
+  if (d != null) return d;
+  const m = Number(t?.score ?? 0);
+  return Math.min(100, m * 100);
 }
 
 function formatExecRevert(exec) {
@@ -96,6 +111,44 @@ async function call(method, url, body) {
     ? await api.get(url)
     : await api.post(url, body);
   return { ...r.data, _ms: Date.now() - start };
+}
+
+function isRateLimitError(err) {
+  const raw = err?.response?.data?.error ?? err?.response?.data;
+  const msg =
+    typeof raw === "string"
+      ? raw
+      : raw && typeof raw === "object"
+        ? JSON.stringify(raw)
+        : err?.message || String(err);
+  return /429|rate limit|compute units|coalesce/i.test(String(msg));
+}
+
+/** POST with exponential backoff when Alchemy returns 429 (delegate, revoke, …). */
+async function postJsonWithRetry(url, body, addLog, max = 6) {
+  let lastErr;
+  for (let i = 0; i < max; i++) {
+    try {
+      return await call("POST", url, body);
+    } catch (e) {
+      lastErr = e;
+      if (isRateLimitError(e) && i < max - 1) {
+        const wait = 2200 * (i + 1);
+        addLog(
+          `  RPC rate-limited — waiting ${(wait / 1000).toFixed(1)}s before retry ${i + 1}/${max - 1}…`,
+          "warning"
+        );
+        await new Promise((r) => setTimeout(r, wait));
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw lastErr;
+}
+
+async function postDelegateWithRetry(body, addLog) {
+  return postJsonWithRetry("/api/delegate", body, addLog);
 }
 
 function getDefaultLive() {
@@ -607,8 +660,8 @@ export default function LiveDemo() {
           try {
             const trust = await call("GET", `/api/trust/${childId}`);
             maxSpend = trust.maxSpend || maxSpend;
-            const dct = trustCompositePercent(trust);
-            addLog(`  On-chain registry: ${Number(trust.score || 0).toFixed(4)} → max grantable: ${maxSpend}`);
+            const dct = dctUiPercent(trust);
+            addLog(`  On-chain registry: ${Number(trust.score || 0).toFixed(4)}× baseline → max grantable: ${maxSpend}`);
             if (dct != null) {
               addLog(`  DCT composite (S1/S2/S3): ${dct.toFixed(1)}% · tier ${trust.dctTrustProfile?.tier ?? "—"}`);
             }
@@ -627,14 +680,20 @@ export default function LiveDemo() {
           const attMs = att.attenuationTimeMs ?? Date.now() - t0;
           addLog(`✓ Attenuated in ${attMs}ms — no network, pure Ed25519`, "success");
 
+          addLog("  Cooling down 2s before on-chain delegate (eases Alchemy 429 bursts after registrations)…", "info");
+          await new Promise((r) => setTimeout(r, 2000));
+
           addLog("Registering delegation on DCTRegistry…");
-          const del = await call("POST", "/api/delegate", {
-            parentTokenB64: wf().tokens.root,
-            parentAgentTokenId: parentId,
-            childAgentTokenId: childId,
-            childTools: ["web_fetch", "research"],
-            childSpendLimit: 10_000_000,
-          });
+          const del = await postDelegateWithRetry(
+            {
+              parentTokenB64: wf().tokens.root,
+              parentAgentTokenId: parentId,
+              childAgentTokenId: childId,
+              childTools: ["web_fetch", "research"],
+              childSpendLimit: 10_000_000,
+            },
+            addLog
+          );
 
           addLog(`✓ Delegation registered → tx: ${shorten(del.txHash)}`, "success");
           addTx({
@@ -683,14 +742,20 @@ export default function LiveDemo() {
           const attMs = att.attenuationTimeMs ?? Date.now() - t0;
           addLog(`✓ Attenuated in ${attMs}ms`, "success");
 
+          addLog("  Short pause before second delegate tx…", "info");
+          await new Promise((r) => setTimeout(r, 1500));
+
           addLog("Registering second delegation on DCTRegistry…");
-          const del = await call("POST", "/api/delegate", {
-            parentTokenB64: parentToken,
-            parentAgentTokenId: parentId,
-            childAgentTokenId: childId,
-            childTools: ["x402_pay"],
-            childSpendLimit: 2_000_000,
-          });
+          const del = await postDelegateWithRetry(
+            {
+              parentTokenB64: parentToken,
+              parentAgentTokenId: parentId,
+              childAgentTokenId: childId,
+              childTools: ["x402_pay"],
+              childSpendLimit: 2_000_000,
+            },
+            addLog
+          );
 
           addLog(`✓ Registered → tx: ${shorten(del.txHash)}`, "success");
           addTx({
@@ -858,7 +923,7 @@ export default function LiveDemo() {
             logChainFootprint("enforcer execute", exec);
             try {
               const tr = await call("GET", `/api/trust/${wf().agents.research ?? "1"}`);
-              const pct = trustCompositePercent(tr);
+              const pct = trustBarPercent(tr);
               patchLive({
                 treeState: "execution_success",
                 trustScores: {
@@ -874,62 +939,13 @@ export default function LiveDemo() {
               patchLive({ treeState: "execution_success" });
             }
 
-            // Second on-chain execution — Payment agent, in-scope spend (feeds ActionValidated for agent #payment)
-            const wr = workflowRef.current ?? wf();
-            const payTok = wr.tokens.payment;
-            const payAgent = wr.agents.payment ?? "2";
-            if (payTok) {
-              addLog("\n[chain] Second execution — Payment Agent · x402_pay ($1.00 within $2.00 limit)…");
-              const localPay = await call("POST", "/api/execute/verify-local", {
-                tokenId: payTok,
-                agentId: payAgent,
-                tool: "x402_pay",
-                spendAmount: 1_000_000,
-              });
-              addLog(
-                `${localPay.passed ? "✓" : "✗"} Local Datalog ${localPay.passed ? "passed" : "failed"} — ${localPay.reason || ""}`,
-                localPay.passed ? "success" : "warning"
-              );
-              const payExec = await call("POST", "/api/execute/submit", {
-                tokenId: payTok,
-                agentId: payAgent,
-                tool: "x402_pay",
-                spendAmount: 1_000_000,
-              });
-              if (payExec.success) {
-                addLog(`✓ Payment action validated — tx: ${shorten(payExec.txHash)}`, "success");
-                addTx({
-                  hash: payExec.txHash,
-                  label: "DCTEnforcer.validateActionWithScope (x402_pay)",
-                  blockNumber: payExec.blockNumber,
-                  gasUsed: payExec.gasUsed,
-                  feeWei: payExec.feeWei,
-                  path: payExec.path,
-                });
-                logChainFootprint("enforcer payment execute", payExec);
-                try {
-                  const trp = await call("GET", `/api/trust/${payAgent}`);
-                  const pctP = trustCompositePercent(trp);
-                  patchLive({
-                    trustScores: {
-                      ...(workflowRef.current ?? wr).trustScores,
-                      payment: pctP != null ? pctP : (workflowRef.current ?? wr).trustScores.payment,
-                    },
-                    trustDetail: {
-                      ...(workflowRef.current ?? wr).trustDetail,
-                      payment: trp.dctTrustProfile ?? (workflowRef.current ?? wr).trustDetail.payment,
-                    },
-                  });
-                } catch {
-                  /* ignore */
-                }
-              } else {
-                addLog(`⚠ Payment enforcer: ${formatExecRevert(payExec)}`, "warning");
-                addLog("  (Second execution is optional for demo narrative — trust still uses research tx)", "info");
-              }
-            } else {
-              addLog("  (No payment delegation token — skipped second execution; complete Phase 4 first)", "info");
-            }
+            addLog(
+              "\n  Note: we do not run a second enforcer tx for Payment x402_pay on the leaf token — " +
+                "each Biscuit attenuation appends `agent_erc8004_id == child`, so an O→R→P chain " +
+                "requires both Research and Payment ids to satisfy the same $id (impossible). " +
+                "Payment paths need a single-hop token or a future chain-aware policy.",
+              "info"
+            );
           } else {
             addLog(`✗ Enforcer rejected: ${formatExecRevert(exec)}`, "error");
             addLog("  (Token not registered on-chain — run the delegate steps first)", "info");
@@ -1011,7 +1027,7 @@ export default function LiveDemo() {
             addLog("  Scope commitment hash cannot be faked — registered at delegation time", "warning");
             try {
               const tr = await call("GET", `/api/trust/${wf().agents.payment ?? "2"}`);
-              const pct = trustCompositePercent(tr);
+              const pct = trustBarPercent(tr);
               patchLive({
                 trustScores: {
                   ...wf().trustScores,
@@ -1052,11 +1068,17 @@ export default function LiveDemo() {
 
           addLog(`Revoking first delegation (cascade invalidates downstream): ${shorten(researchRevId, 12)}…`);
           addLog("Single SSTORE write — O(1) regardless of tree size");
+          addLog("  Cooling down 2.5s before revoke (reduces 429 after prior txs)…", "info");
+          await new Promise((r) => setTimeout(r, 2500));
 
-          const r = await call("POST", "/api/revoke", {
-            tokenId: researchRevId,
-            agentTokenId: agentId,
-          });
+          const r = await postJsonWithRetry(
+            "/api/revoke",
+            {
+              tokenId: researchRevId,
+              agentTokenId: agentId,
+            },
+            addLog
+          );
 
           if (r.success || r.txHash) {
             addLog(`✓ Root revoked → tx: ${shorten(r.txHash)}`, "success");
@@ -1142,18 +1164,22 @@ export default function LiveDemo() {
           ]) {
             try {
               const t = await call("GET", `/api/trust/${id}`);
-              const pct = trustCompositePercent(t);
-              if (pct != null) scores[key] = pct;
+              const dct = dctUiPercent(t);
+              const bar = trustBarPercent(t);
+              if (bar != null) scores[key] = bar;
               detail[key] = t.dctTrustProfile ?? null;
-              const chain = Number(t.score ?? 0).toFixed(4);
+              const mult = registryTrustMultiplier(t);
               addLog(
-                `  Agent #${id} (${key}): DCT ${pct != null ? `${pct.toFixed(1)}%` : "—"} · tier ${t.dctTrustProfile?.tier ?? "—"} · chain ${chain}`,
+                `  Agent #${id} (${key}): DCT ${dct != null ? `${dct.toFixed(1)}%` : "—"} · tier ${t.dctTrustProfile?.tier ?? "—"} · registry ${mult != null ? `${mult.toFixed(4)}×` : "—"}`,
                 "info"
               );
             } catch { addLog(`  Agent #${id}: trust query failed`, "warning"); }
           }
           patchLive({ trustScores: scores, trustDetail: detail });
-          addLog("\n✓ DCT composite matches pythonNodes/trustScores.py; registry trustScore is on-chain baseline.", "success");
+          addLog(
+            "\n✓ DCT composite (off-chain) is 0–100%. Registry score is on-chain vs 1e18 baseline (often ~1.0×; can exceed after rewards).",
+            "success"
+          );
           break;
         }
 
@@ -1269,7 +1295,7 @@ export default function LiveDemo() {
     "Creating Root Permission Token",
     "Orchestrator → Research Delegation",
     "Research → Payment Delegation",
-    "Two On-Chain Executions — web_fetch + x402_pay",
+    "Research Agent Executes web_fetch (TLSNotary + Enforcer)",
     "Research Agent Tries Forbidden Tool",
     "Payment Agent Tries to Overspend",
     "Cascade Revocation — One Transaction",
@@ -1284,7 +1310,7 @@ export default function LiveDemo() {
     "Offline, instant, pure Ed25519 cryptography",
     "Authority narrows. Registered on-chain.",
     "Full delegation tree: Orchestrator → Research → Payment",
-    "TLSNotary + Research enforcer tx, then Payment x402_pay ($1) — two ActionValidated events for trust DB",
+    "TLSNotary prove → Biscuit (research token) → DCTEnforcer + oracle attestation",
     "Rejected before touching the blockchain — zero gas",
     "Passes local check, reverts on-chain",
     "Single SSTORE. O(1). No gas bomb.",

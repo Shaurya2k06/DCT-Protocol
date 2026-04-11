@@ -228,6 +228,10 @@ export function attenuateToken({
     checkCode += `check if spend_usdc($s), $s <= ${spendLimitUsdc};\n`;
   }
 
+  // Bind this delegation hop to the child ERC-8004 identity. Note: each append stacks
+  // checks across the chain; a leaf token may require ALL prior hops' agent ids to unify
+  // with the same $id — so multi-hop "O→R→P" cannot satisfy both R and P as redeemer
+  // without a different policy model (future: replace or scope chain facts).
   checkCode += `check if agent_erc8004_id($id), $id == "${childAgentId}";\n`;
   checkCode += `check if time($t), $t < ${effectiveExpiry};\n`;
 

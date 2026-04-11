@@ -1,4 +1,4 @@
-# TLSNotary local stack for the browser app (client `/` TLSNotary page).
+# TLSNotary local stack — notary + WebSocket→TCP proxy for TLS proving setups.
 #
 #   docker compose -f docker-compose.tlsn.yml up -d
 #
@@ -6,12 +6,9 @@
 #   • notary — ghcr.io/tlsnotary/tlsn/notary-server:v0.1.0-alpha.12 → http://127.0.0.1:7047
 #   • wstcp  — WebSocket proxy → example.com:443 on ws://127.0.0.1:55688
 #
-# The Vite app defaults to that notary URL + WS proxy + https://example.com/ so you can
-# click “Run TLSNotary prove” with zero .env. For another HTTPS host, run a second wstcp
-# (or change the wstcp service command) and point “WebSocket proxy” at it.
-#
-# Server-only (Node) hook, optional:
-#   TLSN_PROVER_URL=…  — separate HTTP POST /prove service, not used by the browser UI.
+# Point `TLSN_NOTARY_URL` / your prover at the notary. The Vite `/tlsn` page uses
+# `POST /api/tlsn/prove` + `TLSN_PROVER_URL` (see README). wstcp is for tooling that
+# needs a browser-side WebSocket tunnel to TCP (e.g. upstream browser extensions).
 
 services:
   notary:
@@ -37,6 +34,6 @@ services:
     container_name: dct-wstcp
     ports:
       - "55688:55688"
-    # Matches default attest URL https://example.com/ — tlsn-js appends ?token=<hostname>
+    # Default tunnel target: https://example.com/ (change host:port for other sites)
     command: ["--bind-addr", "0.0.0.0:55688", "example.com:443"]
     restart: unless-stopped

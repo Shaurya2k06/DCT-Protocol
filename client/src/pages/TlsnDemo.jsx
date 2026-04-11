@@ -1,239 +1,144 @@
-import { useState, useCallback, useMemo } from "react";
-import { Loader2, Shield, Lock, AlertCircle, Copy, Check } from "lucide-react";
+import { useState, useCallback, useEffect, useRef } from "react";
+import {
+  Loader2,
+  Shield,
+  AlertCircle,
+  Copy,
+  Check,
+  Server,
+  Puzzle,
+  ExternalLink,
+  Radio,
+} from "lucide-react";
 import Header from "../components/layout/Header";
-// Real ESM exports come from vite tlsn-js-umd-shim (see vite.config.js).
-import initTlsn, { Prover } from "tlsn-js";
+import { getTlsnConfig, proveTlsn } from "../lib/api.js";
+import { buildProvePlugin } from "../lib/tlsn-plugin.js";
 
 /**
- * Browser TLSNotary — tlsn-js + WASM. Matches docker-compose.tlsn.yml defaults:
- *   notary http://127.0.0.1:7047  |  wstcp ws://127.0.0.1:55688 → example.com:443
+ * TLSNotary demo — two proving modes:
+ *
+ * 1. **Extension** (preferred): Uses the maintained tlsn-extension Chrome extension.
+ *    The page sends plugin code via `window.tlsn.execCode()` and the extension runs
+ *    a real MPC-TLS proof in-browser with its bundled WASM prover.
+ *    Install: https://github.com/tlsnotary/tlsn-extension
+ *
+ * 2. **Server API** (fallback): Calls `POST /api/tlsn/prove` on the DCT server,
+ *    which proxies to `TLSN_PROVER_URL` (e.g. `npm run tlsn-prover`).
  */
 
 const DEFAULT_URL = "https://example.com/";
+const DEFAULT_VERIFIER = "http://localhost:7047";
 
-const DEFAULT_NOTARY =
-  import.meta.env.VITE_TLSN_NOTARY_URL || "http://127.0.0.1:7047";
+const EXTENSION_URL = "https://github.com/tlsnotary/tlsn-extension";
 
-/** Pairs with `wstcp` service in docker-compose.tlsn.yml (example.com:443). */
-const DEFAULT_WS_PROXY =
-  import.meta.env.VITE_TLSN_WEBSOCKET_PROXY || "ws://127.0.0.1:55688";
-
-function hostnameOf(urlStr) {
-  try {
-    return new URL(urlStr).hostname;
-  } catch {
-    return "";
-  }
-}
-
-/** tlsn-wasm needs SharedArrayBuffer → page must be cross-origin isolated (Vite COOP+COEP). */
-function tlsnEnvironmentError() {
-  if (typeof crossOriginIsolated !== "undefined" && !crossOriginIsolated) {
-    return (
-      "TLSNotary WASM needs a cross-origin isolated page (SharedArrayBuffer). " +
-      "Run `npm run dev` from client/ and reload; Vite must send COOP+COEP headers (see vite.config.js). " +
-      "Do not open the app as a file:// URL. Restart the dev server after config changes."
-    );
-  }
-  if (typeof SharedArrayBuffer === "undefined") {
-    return "SharedArrayBuffer is unavailable in this browser/context — TLSNotary cannot run.";
-  }
-  return null;
-}
-
-/**
- * tlsn-wasm sets a global tracing subscriber once; calling initTlsn() again panics
- * ("global default trace dispatcher has already been set"). Must survive React remounts
- * (e.g. navigate away from /tlsn and back), so keep the promise at module scope — not useRef.
- */
-let tlsnInitPromise = null;
-
-/** Rayon thread count — use 1 first: fewer nested workers = fewer failure modes under Vite. */
-const TLSN_INIT_OPTS = {
-  loggingLevel: "Debug",
-  hardwareConcurrency: 1,
-};
-
-const INIT_TLSN_TIMEOUT_MS = 120 * 1000;
-
-async function assertTlsnRootAssetsOk() {
-  /* Hashed Webpack chunks + ESM worker deps (tlsn_wasm.js loads tlsn_wasm_bg.wasm + snippets). */
-  const files = [
-    "96d038089797746d7695.wasm",
-    "a6de6b189c13ad309102.js",
-    "tlsn_wasm.js",
-    "tlsn_wasm_bg.wasm",
-  ];
-  for (const f of files) {
-    const r = await fetch(`/${f}`, { method: "HEAD", cache: "no-store" });
-    const ct = (r.headers.get("content-type") || "").toLowerCase();
-    /* Reject SPA fallback: text/html matches ct.includes("text") — that hid broken dev serving. */
-    const okWasm =
-      f.endsWith(".wasm") &&
-      r.ok &&
-      !ct.includes("html") &&
-      (ct.includes("wasm") || ct.includes("octet-stream"));
-    const okJs =
-      f.endsWith(".js") &&
-      r.ok &&
-      !ct.includes("html") &&
-      (ct.includes("javascript") || ct.includes("ecmascript") || ct.includes("module"));
-    if (!r.ok || (!okWasm && !okJs)) {
-      console.error("[tlsn-demo] root asset check failed", { f, status: r.status, ct });
-      throw new Error(
-        `TLSN asset missing or wrong Content-Type: /${f} (got ${r.status}, ${ct || "no ct"}). ` +
-          "Dev: tlsn middleware must run before Vite’s SPA fallback (see vite.config.js tlsn-root-assets)."
-      );
-    }
-    if (import.meta.env.DEV) console.info("[tlsn-demo] HEAD ok", f, ct);
-  }
-}
-
-function ensureTlsnInit() {
-  if (!tlsnInitPromise) {
-    if (import.meta.env.DEV) {
-      console.info("[tlsn-demo] first initTlsn()", TLSN_INIT_OPTS);
-    }
-    const run = (async () => {
-      await assertTlsnRootAssetsOk();
-      await initTlsn(TLSN_INIT_OPTS);
-      if (import.meta.env.DEV) console.info("[tlsn-demo] initTlsn() resolved");
-    })();
-    tlsnInitPromise = withTimeout(
-      run,
-      INIT_TLSN_TIMEOUT_MS,
-      "initTlsn",
-      "WASM/worker chain must load (GET /tlsn_wasm.js, /tlsn_wasm_bg.wasm, hashed chunks — not SPA HTML). See vite tlsn-root-assets. Notary/wstcp are only for Prove."
-    ).catch((err) => {
-      console.error("[tlsn-demo] initTlsn() failed", err);
-      tlsnInitPromise = null;
-      throw err;
-    });
-  } else if (import.meta.env.DEV) {
-    console.info("[tlsn-demo] reusing existing initTlsn() promise");
-  }
-  return tlsnInitPromise;
-}
-
-function logProveError(prefix, e) {
-  const msg = e?.message ?? String(e);
-  console.error(`[tlsn-demo] ${prefix}`, msg, e);
-  if (e?.stack) console.error("[tlsn-demo] stack", e.stack);
-}
-
-/** Notarize can hang if notary/wstcp/network stall — surface that after 5 minutes. */
-const NOTARIZE_TIMEOUT_MS = 5 * 60 * 1000;
-
-function withTimeout(promise, ms, label, hint) {
-  let t;
-  const timeout = new Promise((_, reject) => {
-    t = window.setTimeout(() => {
-      const err = new Error(
-        `${label} timed out after ${ms / 1000}s — ${hint}`
-      );
-      console.error("[tlsn-demo]", err.message);
-      reject(err);
-    }, ms);
-  });
-  return Promise.race([promise, timeout]).finally(() => window.clearTimeout(t));
+function useTlsnExtension() {
+  const [available, setAvailable] = useState(
+    () => typeof window !== "undefined" && typeof window.tlsn?.execCode === "function"
+  );
+  useEffect(() => {
+    if (available) return;
+    const onLoaded = () => setAvailable(true);
+    window.addEventListener("tlsn_loaded", onLoaded);
+    const t = setTimeout(() => {
+      if (typeof window.tlsn?.execCode === "function") setAvailable(true);
+    }, 2000);
+    return () => {
+      window.removeEventListener("tlsn_loaded", onLoaded);
+      clearTimeout(t);
+    };
+  }, [available]);
+  return available;
 }
 
 export default function TlsnDemo() {
+  const extensionAvailable = useTlsnExtension();
+
+  const [mode, setMode] = useState("extension");
   const [targetUrl, setTargetUrl] = useState(DEFAULT_URL);
-  const [notaryUrl, setNotaryUrl] = useState(DEFAULT_NOTARY);
-  const [wsProxyUrl, setWsProxyUrl] = useState(DEFAULT_WS_PROXY);
+  const [verifierUrl, setVerifierUrl] = useState(DEFAULT_VERIFIER);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const [presentation, setPresentation] = useState(null);
+  const [result, setResult] = useState(null);
+  const [progress, setProgress] = useState(null);
+  const [config, setConfig] = useState(null);
+  const [configErr, setConfigErr] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [logs, setLogs] = useState([]);
+  const requestIdRef = useRef(null);
+  const logsEndRef = useRef(null);
 
-  const hostMismatch = useMemo(() => {
-    const h = hostnameOf(targetUrl.trim());
-    return h && h !== "example.com";
-  }, [targetUrl]);
+  useEffect(() => {
+    let cancelled = false;
+    getTlsnConfig()
+      .then((c) => { if (!cancelled) setConfig(c); })
+      .catch((e) => { if (!cancelled) setConfigErr(e?.message || String(e)); });
+    return () => { cancelled = true; };
+  }, []);
 
-  const prove = useCallback(async () => {
+  useEffect(() => {
+    function onMsg(ev) {
+      if (ev.data?.type === "TLSN_PROVE_PROGRESS") {
+        if (requestIdRef.current && ev.data.requestId !== requestIdRef.current) return;
+        setProgress({ step: ev.data.step, progress: ev.data.progress, message: ev.data.message });
+      }
+      if (ev.data?.type === "TLSN_OFFSCREEN_LOG") {
+        const ts = new Date().toLocaleTimeString();
+        setLogs((prev) => [...prev.slice(-200), { ts, msg: ev.data.message, level: ev.data.level }]);
+      }
+    }
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, []);
+
+  useEffect(() => {
+    logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [logs]);
+
+  const proveViaExtension = useCallback(async () => {
+    const url = targetUrl.trim();
+    if (!url) { setError("Enter a URL."); return; }
     setError(null);
-    setPresentation(null);
-    const ws = wsProxyUrl.trim();
-    if (!ws) {
-      const m = "WebSocket proxy URL is empty. Restore default ws://127.0.0.1:55688 after docker compose up.";
-      console.warn("[tlsn-demo]", m);
-      setError(m);
-      return;
-    }
-
-    const t0 = performance.now();
-    if (import.meta.env.DEV) {
-      console.info("[tlsn-demo] prove start", {
-        url: targetUrl.trim(),
-        notaryUrl: notaryUrl.trim(),
-        websocketProxyUrl: ws.replace(/\/$/, ""),
-        crossOriginIsolated: typeof crossOriginIsolated !== "undefined" ? crossOriginIsolated : "n/a",
-      });
-    }
-
+    setResult(null);
+    setProgress(null);
     setBusy(true);
+    const rid = `dct_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    requestIdRef.current = rid;
     try {
-      const envErr = tlsnEnvironmentError();
-      if (envErr) {
-        console.warn("[tlsn-demo] environment check failed", envErr);
-        setError(envErr);
-        return;
-      }
-
-      if (typeof initTlsn !== "function" || typeof Prover?.notarize !== "function") {
-        const m =
-          "tlsn-js did not load (missing default init or Prover). Try reinstalling dependencies; the package is a browser Webpack bundle.";
-        console.error("[tlsn-demo]", m, { initTlsn: typeof initTlsn, Prover: typeof Prover });
-        setError(m);
-        return;
-      }
-
-      if (import.meta.env.DEV) console.info("[tlsn-demo] await ensureTlsnInit() …");
-      await ensureTlsnInit();
-      if (import.meta.env.DEV) console.info(`[tlsn-demo] ensureTlsnInit done in ${(performance.now() - t0).toFixed(0)}ms`);
-
-      if (import.meta.env.DEV) console.info("[tlsn-demo] Prover.notarize() … (can take minutes: notary + TLS)");
-      const n0 = performance.now();
-      const result = await withTimeout(
-        Prover.notarize({
-          url: targetUrl.trim(),
-          notaryUrl: notaryUrl.trim(),
-          websocketProxyUrl: ws.replace(/\/$/, ""),
-          method: "GET",
-          maxSentData: 4096,
-          maxRecvData: 65536,
-        }),
-        NOTARIZE_TIMEOUT_MS,
-        "Prover.notarize",
-        "check notary :7047, wstcp :55688, and DevTools Network"
-      );
-
-      if (import.meta.env.DEV) {
-        console.info(`[tlsn-demo] Prover.notarize ok in ${(performance.now() - n0).toFixed(0)}ms`, {
-          version: result?.version,
-          dataLen: result?.data?.length,
-        });
-      }
-      setPresentation(result);
+      const code = buildProvePlugin(url, verifierUrl.trim() || DEFAULT_VERIFIER);
+      const res = await window.tlsn.execCode(code, { requestId: rid });
+      setResult(res);
     } catch (e) {
-      logProveError("prove failed", e);
-      const display =
-        e?.message ||
-        (typeof e === "object" && e !== null && "toString" in e ? e.toString() : String(e));
-      setError(display);
+      console.error("[tlsn-ext] prove failed", e);
+      setError(e?.message || String(e));
     } finally {
       setBusy(false);
-      if (import.meta.env.DEV) {
-        console.info(`[tlsn-demo] prove finished (busy cleared) total ${(performance.now() - t0).toFixed(0)}ms`);
-      }
+      requestIdRef.current = null;
     }
-  }, [targetUrl, notaryUrl, wsProxyUrl]);
+  }, [targetUrl, verifierUrl]);
+
+  const proveViaApi = useCallback(async () => {
+    const url = targetUrl.trim();
+    if (!url) { setError("Enter a URL."); return; }
+    setError(null);
+    setResult(null);
+    setProgress(null);
+    setBusy(true);
+    try {
+      const data = await proveTlsn({ url, method: "GET" });
+      setResult(data);
+    } catch (e) {
+      console.error("[tlsn-api] prove failed", e);
+      setError(e?.response?.data?.error || e?.message || String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [targetUrl]);
+
+  const prove = mode === "extension" ? proveViaExtension : proveViaApi;
 
   const copyJson = () => {
-    if (!presentation) return;
-    navigator.clipboard.writeText(JSON.stringify(presentation, null, 2));
+    if (!result) return;
+    navigator.clipboard.writeText(JSON.stringify(result, null, 2));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -241,105 +146,129 @@ export default function TlsnDemo() {
   return (
     <div className="space-y-6 max-w-4xl">
       <Header
-        title="TLSNotary (browser)"
-        subtitle="Defaults match docker compose: notary :7047 + wstcp :55688 → example.com"
+        title="TLSNotary"
+        subtitle="MPC-TLS proof — via browser extension or server API"
       />
 
       <div className="nb-card space-y-4">
-        {/* Instructions */}
-        <div className="rounded-nb border-2 border-nb-accent-2 bg-nb-accent-2/10 p-4 text-sm text-nb-ink/70">
-          <p className="font-display font-bold text-nb-ink mb-1">Zero-config path</p>
-          <ol className="list-decimal list-inside space-y-1 text-xs leading-relaxed">
-            <li>
-              <code className="text-nb-accent-2 font-mono">docker compose -f docker-compose.tlsn.yml up -d</code>
-            </li>
-            <li>
-              <code className="text-nb-accent-2 font-mono">cd client &amp;&amp; npm run dev</code> — open{" "}
-              <code className="text-nb-accent-2 font-mono">/tlsn</code>
-            </li>
-            <li>
-              Leave defaults (example.com + notary + ws proxy), click <strong className="text-nb-ink">Run TLSNotary prove</strong>
-            </li>
-          </ol>
+        {/* Mode picker */}
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setMode("extension")}
+            className={`nb-pill flex items-center gap-1.5 transition-colors ${mode === "extension" ? "bg-nb-accent-2/20 text-nb-accent-2 border-nb-accent-2" : ""}`}
+          >
+            <Puzzle className="w-3.5 h-3.5" />
+            Extension
+            {extensionAvailable && <Radio className="w-3 h-3 text-nb-ok" />}
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("api")}
+            className={`nb-pill flex items-center gap-1.5 transition-colors ${mode === "api" ? "bg-nb-accent-2/20 text-nb-accent-2 border-nb-accent-2" : ""}`}
+          >
+            <Server className="w-3.5 h-3.5" />
+            Server API
+          </button>
         </div>
 
-        {/* Info note */}
-        <div className="flex items-start gap-3 text-sm text-nb-ink/60">
-          <Shield className="w-5 h-5 shrink-0 text-nb-accent-2 mt-0.5" />
-          <p>
-            This uses <strong className="text-nb-ink">tlsn-js</strong> in the browser. The Node{" "}
-            <code className="text-xs bg-nb-bg border border-nb-ink/20 px-1 rounded font-mono">demo:onchain</code> script is separate (oracle
-            signing unless <code className="text-xs bg-nb-bg border border-nb-ink/20 px-1 font-mono">TLSN_PROVER_URL</code>).
-          </p>
-        </div>
+        {/* Extension panel */}
+        {mode === "extension" && (
+          <div className="rounded-nb border-2 border-nb-accent-2 bg-nb-accent-2/10 p-4 text-sm text-nb-ink/70 space-y-2">
+            <p className="font-display font-bold text-nb-ink">
+              {extensionAvailable ? "TLSN Extension detected" : "TLSN Extension not detected"}
+            </p>
+            {extensionAvailable ? (
+              <p className="text-xs leading-relaxed">
+                The Chrome extension will open a window, intercept the request, and run an MPC-TLS
+                proof via the verifier. Progress appears below.
+              </p>
+            ) : (
+              <div className="text-xs leading-relaxed space-y-1">
+                <p>
+                  Install the{" "}
+                  <a href={EXTENSION_URL} target="_blank" rel="noopener noreferrer" className="text-nb-accent-2 underline">
+                    TLSN Extension
+                    <ExternalLink className="inline w-3 h-3 ml-0.5 -mt-0.5" />
+                  </a>{" "}
+                  (or load the unpacked dev build), then reload this page.
+                </p>
+                <ol className="list-decimal list-inside space-y-0.5">
+                  <li>Clone <code className="font-mono text-[10px]">tlsnotary/tlsn-extension</code>, run <code className="font-mono text-[10px]">npm install && npm run dev</code></li>
+                  <li>Chrome → <code className="font-mono text-[10px]">chrome://extensions</code> → Load unpacked → <code className="font-mono text-[10px]">packages/extension/build</code></li>
+                  <li>Start verifier: <code className="font-mono text-[10px]">cd packages/verifier && cargo run</code> (or <code className="font-mono text-[10px]">docker compose -f docker-compose.tlsn.yml up -d</code>)</li>
+                  <li>Reload this page — the extension injects <code className="font-mono text-[10px]">window.tlsn</code></li>
+                </ol>
+              </div>
+            )}
 
-        {/* Form fields */}
-        <p className="rounded-nb border-2 border-dashed border-nb-ink/25 bg-nb-bg px-3 py-2 text-[11px] leading-relaxed text-nb-ink/65">
-          <strong className="text-nb-ink">What to enter:</strong> With{" "}
-          <code className="font-mono text-[10px]">docker compose -f docker-compose.tlsn.yml up -d</code>, the bundled{" "}
-          <strong className="text-nb-ink">wstcp</strong> connects the browser to{" "}
-          <strong className="text-nb-ink">example.com:443</strong> only. So the URL to attest should stay{" "}
-          <code className="font-mono text-[10px]">https://example.com/</code> (or another path on that host). To prove a{" "}
-          <em>different</em> site, run another wstcp aimed at that host:port and point the WebSocket proxy at it — the
-          default <code className="font-mono text-[10px]">example.com</code> setup is intentional, not arbitrary. Notary:{" "}
-          <code className="font-mono text-[10px]">http://127.0.0.1:7047</code>, proxy:{" "}
-          <code className="font-mono text-[10px]">ws://127.0.0.1:55688</code>.
-        </p>
+            <label className="block space-y-1 pt-1">
+              <span className="text-xs font-display font-semibold text-nb-ink/60">Verifier URL</span>
+              <input
+                className="nb-input font-mono text-xs"
+                value={verifierUrl}
+                onChange={(e) => setVerifierUrl(e.target.value)}
+                placeholder="ws://localhost:7047"
+              />
+            </label>
+          </div>
+        )}
 
+        {/* Server API panel */}
+        {mode === "api" && (
+          <div className="rounded-nb border-2 border-nb-ink/15 bg-nb-bg p-4 text-sm text-nb-ink/70 space-y-2">
+            <p className="font-display font-bold text-nb-ink">Server API</p>
+            <p className="text-xs leading-relaxed">
+              Calls <code className="font-mono text-[10px]">POST /api/tlsn/prove</code> on your DCT
+              server. Requires <code className="font-mono text-[10px]">TLSN_PROVER_URL</code> in{" "}
+              <code className="font-mono text-[10px]">server/.env</code> + <code className="font-mono text-[10px]">npm run tlsn-prover</code>.
+            </p>
+            {configErr && <p className="text-nb-error text-xs font-mono">{configErr}</p>}
+            {config && (
+              <ul className="font-mono text-[11px] space-y-0.5">
+                <li><span className="text-nb-ink/50">enabled:</span> {String(config.enabled)}</li>
+                <li><span className="text-nb-ink/50">proverUrl:</span> {config.proverUrl ?? "—"}</li>
+                <li><span className="text-nb-ink/50">notaryUrl:</span> {config.notaryUrl ?? "—"}</li>
+              </ul>
+            )}
+          </div>
+        )}
+
+        {/* URL + button */}
         <label className="block space-y-1">
-          <span className="text-xs font-display font-semibold text-nb-ink/60">URL to attest (HTTPS)</span>
+          <span className="text-xs font-display font-semibold text-nb-ink/60">URL to prove (HTTPS)</span>
           <input
             className="nb-input font-mono"
             value={targetUrl}
             onChange={(e) => setTargetUrl(e.target.value)}
           />
-          {hostMismatch && (
-            <p className="text-[11px] text-nb-warn leading-snug font-display font-semibold">
-              Docker <code className="text-[10px] font-mono">wstcp</code> tunnels <strong>example.com</strong> only. For{" "}
-              <code className="text-[10px] font-mono">{hostnameOf(targetUrl)}</code>, run another wstcp to that host:port
-              and set WebSocket proxy below to match.
-            </p>
-          )}
         </label>
 
-        <label className="block space-y-1">
-          <span className="text-xs font-display font-semibold text-nb-ink/60">Notary URL</span>
-          <input
-            className="nb-input font-mono"
-            value={notaryUrl}
-            onChange={(e) => setNotaryUrl(e.target.value)}
-            placeholder="http://127.0.0.1:7047"
-          />
-        </label>
-
-        <label className="block space-y-1">
-          <span className="text-xs font-display font-semibold text-nb-ink/60 flex items-center gap-2">
-            <Lock className="w-3 h-3" />
-            WebSocket proxy
-          </span>
-          <input
-            className="nb-input font-mono"
-            value={wsProxyUrl}
-            onChange={(e) => setWsProxyUrl(e.target.value)}
-            placeholder="ws://127.0.0.1:55688"
-          />
-          <p className="text-[11px] text-nb-ink/50 leading-snug">
-            Default <code className="text-[10px] font-mono bg-nb-bg border border-nb-ink/20 px-1 rounded">ws://127.0.0.1:55688</code> is the{" "}
-            <code className="text-[10px] font-mono">wstcp</code> service in <code className="text-[10px] font-mono">docker-compose.tlsn.yml</code>.
-            Override with <code className="text-[10px] font-mono">VITE_TLSN_WEBSOCKET_PROXY</code> if needed.
-          </p>
-        </label>
-
-        {/* Run button */}
         <button
           type="button"
           onClick={prove}
-          disabled={busy}
+          disabled={busy || (mode === "extension" && !extensionAvailable)}
           className="nb-btn-secondary disabled:opacity-50"
         >
           {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
-          {busy ? "Proving…" : "Run TLSNotary prove"}
+          {busy ? "Proving…" : mode === "extension" ? "Prove via extension" : "Prove via API"}
         </button>
+
+        {/* Progress (extension mode) */}
+        {mode === "extension" && progress && busy && (
+          <div className="rounded-nb border border-nb-accent-2/30 bg-nb-accent-2/5 p-3 text-xs font-mono space-y-1">
+            <div className="flex items-center justify-between text-nb-ink/70">
+              <span>{progress.message || progress.step || "…"}</span>
+              <span>{Math.round((progress.progress ?? 0) * 100)}%</span>
+            </div>
+            <div className="h-1.5 rounded-full bg-nb-ink/10 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-nb-accent-2 transition-all"
+                style={{ width: `${Math.round((progress.progress ?? 0) * 100)}%` }}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Error */}
         {error && (
@@ -350,36 +279,39 @@ export default function TlsnDemo() {
         )}
 
         {/* Result */}
-        <div className="mt-4 p-3 rounded-nb border-2 border-nb-ink/20 bg-nb-card text-[11px] text-nb-ink/70 leading-relaxed space-y-1">
-          <p className="font-display font-semibold text-nb-ink text-xs">DCT trust scoring</p>
-          <p>
-            Validated actions feed the same three-signal model as{" "}
-            <code className="text-[10px] font-mono text-nb-accent-2">pythonNodes/trustScores.py</code>{" "}
-            (scope adherence + task completion + time-weighted outcome). The API exposes live composites via{" "}
-            <code className="text-[10px] font-mono">GET /api/trust/:agentId</code> (demo) or{" "}
-            <code className="text-[10px] font-mono">GET /api/agents/:tokenId/trust</code>.
-          </p>
-        </div>
-
-        {presentation && (
+        {result && (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-display font-bold text-nb-ok">PresentationJSON</span>
-              <button
-                type="button"
-                onClick={copyJson}
-                className="nb-pill hover:bg-nb-accent/30 transition-colors"
-              >
+              <span className="text-xs font-display font-bold text-nb-ok">Result</span>
+              <button type="button" onClick={copyJson} className="nb-pill hover:bg-nb-accent/30 transition-colors">
                 {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                {copied ? "Copied" : "Copy"}
+                {copied ? "Copied" : "Copy JSON"}
               </button>
             </div>
             <pre className="max-h-[420px] overflow-auto rounded-nb bg-nb-ink p-4 text-[11px] font-mono leading-relaxed text-white/80 border-2 border-nb-ink">
-              {JSON.stringify(presentation, null, 2)}
+              {JSON.stringify(result, null, 2)}
             </pre>
           </div>
         )}
       </div>
+
+      {/* Extension log console */}
+      {mode === "extension" && logs.length > 0 && (
+        <div className="nb-card space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-display font-bold text-nb-ink">Extension logs</span>
+            <button type="button" onClick={() => setLogs([])} className="nb-pill text-[10px]">Clear</button>
+          </div>
+          <div className="max-h-48 overflow-auto rounded-nb bg-nb-ink p-3 text-[10px] font-mono leading-relaxed text-white/70 border-2 border-nb-ink">
+            {logs.map((l, i) => (
+              <div key={i} className={l.level === "error" ? "text-red-400" : l.level === "warn" ? "text-amber-400" : ""}>
+                <span className="text-white/30">{l.ts}</span>{" "}{l.msg}
+              </div>
+            ))}
+            <div ref={logsEndRef} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
