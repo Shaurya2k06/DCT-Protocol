@@ -1,7 +1,6 @@
 import { NavLink } from "react-router-dom";
 import {
   Compass,
-  FlaskConical,
   LayoutGrid,
   Shield,
   Sparkles,
@@ -12,7 +11,6 @@ const navItems = [
   { to: "/layer", label: "Layer", icon: LayoutGrid, end: false },
   { to: "/tlsn", label: "TLSN", icon: Shield, end: true },
   { to: "/live-demo", label: "Live", icon: Sparkles, end: false },
-  { to: "/demo", label: "Quick", icon: FlaskConical, end: false },
 ];
 
 function NavItem({ item, compact = false }) {
@@ -77,7 +75,7 @@ export default function Sidebar() {
       </aside>
 
       <nav className="fixed inset-x-0 bottom-0 z-50 border-t-[3px] border-nb-ink bg-nb-bg p-2 md:hidden">
-        <div className="mx-auto grid max-w-md grid-cols-4 gap-1.5">
+        <div className="mx-auto grid max-w-md grid-cols-3 gap-1.5">
           {navItems.map((item) => (
             <NavItem key={item.to} item={item} compact />
           ))}

@@ -5,7 +5,7 @@
  * Requires: node --experimental-wasm-modules server.js
  */
 
-import "dotenv/config";
+import "./load-env.mjs";
 import express from "express";
 import cors from "cors";
 import { initRootKey } from "./lib/dct-sdk.js";
@@ -82,6 +82,12 @@ app.get("/", (req, res) => {
     network: addrs.network,
     rpcMode,
     database: pool ? "connected" : process.env.DATABASE_URL ? "error" : "disabled",
+    trustProfileDb:
+      pool != null
+        ? "writes enabled (GET /api/trust syncs agent_trust_profiles)"
+        : process.env.DATABASE_URL
+          ? "init failed — see startup logs; trust rows not saved"
+          : "disabled — set DATABASE_URL in server/.env (loaded from server dir, not cwd)",
     endpoints: [
       "GET  /api/layer/snapshot              ← Operator workflow (no secrets)",
       "POST /api/layer/snapshot",
@@ -92,7 +98,8 @@ app.get("/", (req, res) => {
       "POST /api/tlsn/commit                        ← Commit proof hash on-chain (audit trail)",
       "POST /api/aa/execute-scope                   ← ERC-4337 + Pimlico (sponsored gas)",
       "GET  /api/agents",
-      "GET  /api/agents/:tokenId/trust",
+      "GET  /api/agents/:tokenId/trust   ← on-chain score + DCT composite (trustScores.py)",
+      "GET  /api/trust/:agentId          ← demo alias + dctTrustProfile",
       "POST /api/agents/register",
       "GET  /api/delegation/tree",
       "POST /api/delegation/register",
@@ -116,6 +123,14 @@ async function start() {
     await initDb();
     if (getPool()) {
       console.log("  Database: PostgreSQL (Neon) ready");
+    } else if (process.env.DATABASE_URL?.trim()) {
+      console.warn(
+        "  Database: DATABASE_URL is set but pool is null — check initDb / schema errors above"
+      );
+    } else {
+      console.warn(
+        "  Database: DATABASE_URL unset — agent_trust_profiles will not persist (use server/.env)"
+      );
     }
   } catch (e) {
     console.warn("  Database: init failed —", e.message);

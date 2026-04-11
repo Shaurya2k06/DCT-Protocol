@@ -39,8 +39,8 @@ const SIM_STEPS = [
     stage: "bc",
   },
   {
-    title: "Cascade revocation",
-    desc: "Root is revoked and descendants fail lineage checks.",
+    title: "Branch revocation (research)",
+    desc: "Research subtree revoked — ops & audit branches keep executing.",
     stage: "revoke",
   },
 ];
@@ -90,38 +90,212 @@ const TX_STREAM = [
   ["0xf1…032b", "execute", "reverted"],
 ];
 
-function DelegationTopology({ stage }) {
+/** Compact tree (viewBox 320×156) — research branch n1→… is revocable without touching root */
+const DELEGATION_TREE = {
+  nodes: [
+    { id: "root", x: 160, y: 22, r: 13, label: "root" },
+    { id: "n1", x: 64, y: 64, r: 11, label: "rsch" },
+    { id: "n2", x: 160, y: 64, r: 11, label: "ops" },
+    { id: "n3", x: 256, y: 64, r: 11, label: "audit" },
+    { id: "n4", x: 40, y: 112, r: 10, label: "pay" },
+    { id: "n5", x: 88, y: 112, r: 10, label: "fetch" },
+    { id: "n6", x: 160, y: 112, r: 10, label: "deploy" },
+    { id: "n7", x: 220, y: 112, r: 10, label: "review" },
+    { id: "n8", x: 280, y: 112, r: 10, label: "arch" },
+    { id: "n9", x: 40, y: 148, r: 9, label: "x402" },
+    { id: "n10", x: 88, y: 148, r: 9, label: "tlsn" },
+  ],
+  edges: [
+    ["root", "n1"],
+    ["root", "n2"],
+    ["root", "n3"],
+    ["n1", "n4"],
+    ["n1", "n5"],
+    ["n2", "n6"],
+    ["n3", "n7"],
+    ["n3", "n8"],
+    ["n4", "n9"],
+    ["n5", "n10"],
+  ],
+};
+
+/** Cascade under “research” only — root + other branches stay valid */
+const REVOKED_SUBTREE = new Set(["n1", "n4", "n5", "n9", "n10"]);
+
+const REVOKED_EDGES = new Set(["root-n1", "n1-n4", "n1-n5", "n4-n9", "n5-n10"]);
+
+const BG_LOG_LINES = [
+  "SSE /api/events — DelegationRegistered",
+  "Biscuit authorize — datalog OK (0.8ms)",
+  "DCTRegistry.registerDelegation — gas 118k",
+  "lineage walk depth=4 — ancestors clean",
+  "TLSNotary session — example.com GET /",
+  "Pimlico UserOp — validateActionWithScope",
+  "trust score ++ research agent",
+  "branch revoke(rs) — ops/audit unchanged",
+  "ERC-8004 ownerOf — identity match",
+  "scope commitment — keccak256 match",
+];
+
+function DelegationTopology({ stage, bgTick }) {
   const revoked = stage === "revoke";
-  const a = revoked ? "#EF4444" : "#111111";
-  const b = revoked ? "#EF4444" : stage === "ab" || stage === "bc" ? "#60A5FA" : "#94a3b8";
-  const c = revoked ? "#EF4444" : stage === "bc" ? "#60A5FA" : "#94a3b8";
+  const { nodes, edges } = DELEGATION_TREE;
+  const byId = Object.fromEntries(nodes.map((n) => [n.id, n]));
+
+  const hotPath =
+    stage === "init"
+      ? new Set(["root"])
+      : stage === "ab"
+        ? new Set(["root", "n1", "n4"])
+        : stage === "bc"
+          ? new Set(["root", "n1", "n4", "n9"])
+          : new Set(["root", "n2", "n3", "n6", "n7", "n8"]);
+
+  const pathStoryEdges = [
+    ["root", "n1"],
+    ["n1", "n4"],
+    ["n4", "n9"],
+  ];
+  const edgeOnStory = (a, b) =>
+    pathStoryEdges.some(([x, y]) => (x === a && y === b) || (x === b && y === a));
 
   return (
-    <svg viewBox="0 0 360 210" className="h-[210px] w-full rounded-nb border-2 border-nb-ink bg-nb-bg">
-      <line x1="80" y1="56" x2="180" y2="108" stroke={stage === "ab" || stage === "bc" || revoked ? "#60A5FA" : "#d1d5db"} strokeWidth="2.5" strokeDasharray="5 4" />
-      <line x1="180" y1="108" x2="280" y2="160" stroke={stage === "bc" || revoked ? "#60A5FA" : "#d1d5db"} strokeWidth="2.5" strokeDasharray="5 4" />
+    <div className="relative min-h-0 overflow-hidden rounded-nb border-2 border-nb-ink bg-nb-bg">
+      <style>
+        {`
+          @keyframes landing-edge-flow {
+            to { stroke-dashoffset: -18; }
+          }
+          @keyframes landing-node-pulse {
+            0%, 100% { filter: drop-shadow(0 0 0 transparent); }
+            50% { filter: drop-shadow(0 0 5px rgba(96,165,250,0.75)); }
+          }
+        `}
+      </style>
+      <div
+        className="pointer-events-none absolute inset-0 opacity-[0.06]"
+        style={{
+          backgroundImage:
+            "linear-gradient(90deg,#111 1px,transparent 1px),linear-gradient(#111 1px,transparent 1px)",
+          backgroundSize: "18px 18px",
+        }}
+      />
+      <svg
+        viewBox="0 0 320 156"
+        preserveAspectRatio="xMidYMid meet"
+        className="relative z-[1] block aspect-[320/156] h-auto w-full max-h-[190px] min-h-0 sm:max-h-[200px]"
+      >
+        <defs>
+          <filter id="landing-glow" x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation="1" result="b" />
+            <feMerge>
+              <feMergeNode in="b" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
 
-      <circle cx="80" cy="56" r="22" fill={a} stroke="#111" strokeWidth="2" />
-      <circle cx="180" cy="108" r="22" fill={b} stroke="#111" strokeWidth="2" />
-      <circle cx="280" cy="160" r="22" fill={c} stroke="#111" strokeWidth="2" />
+        {edges.map(([from, to]) => {
+          const A = byId[from];
+          const B = byId[to];
+          if (!A || !B) return null;
+          const key = `${from}-${to}`;
+          const severed = revoked && REVOKED_EDGES.has(key);
+          const story = !revoked && edgeOnStory(from, to);
+          const muted = revoked && !severed;
+          return (
+            <line
+              key={key}
+              x1={A.x}
+              y1={A.y + A.r}
+              x2={B.x}
+              y2={B.y - B.r}
+              stroke={severed ? "#EF4444" : story ? "#60A5FA" : muted ? "#9ca3af" : "#d1d5db"}
+              strokeWidth={severed || story ? 2.4 : 1.6}
+              strokeDasharray={severed ? "5 4" : story ? "6 5" : "3 5"}
+              strokeOpacity={muted ? 0.55 : 1}
+              style={story && !revoked ? { animation: "landing-edge-flow 2.2s linear infinite" } : undefined}
+            />
+          );
+        })}
 
-      <text x="80" y="60" textAnchor="middle" fill="#fff" fontSize="11" fontWeight="700">A</text>
-      <text x="180" y="112" textAnchor="middle" fill="#fff" fontSize="11" fontWeight="700">B</text>
-      <text x="280" y="164" textAnchor="middle" fill="#fff" fontSize="11" fontWeight="700">C</text>
+        {nodes.map((n) => {
+          const inRevokeBranch = revoked && REVOKED_SUBTREE.has(n.id);
+          const on = !revoked ? hotPath.has(n.id) : hotPath.has(n.id) && !inRevokeBranch;
+          const fill = inRevokeBranch ? "#EF4444" : on ? "#111111" : "#cbd5e1";
+          const ring = !revoked && on && (n.id === "root" || n.id === "n9");
+          const fs = n.label.length > 5 ? 6.2 : 7.2;
+          return (
+            <g key={n.id} filter={ring ? "url(#landing-glow)" : undefined}>
+              <circle
+                cx={n.x}
+                cy={n.y}
+                r={n.r + (ring ? 0.5 : 0)}
+                fill={fill}
+                stroke="#111"
+                strokeWidth="1.75"
+                style={ring ? { animation: "landing-node-pulse 2.4s ease-in-out infinite" } : undefined}
+              />
+              <text
+                x={n.x}
+                y={n.y + 3}
+                textAnchor="middle"
+                fill={inRevokeBranch || on ? "#fff" : "#64748b"}
+                fontSize={fs}
+                fontWeight="800"
+                style={{ pointerEvents: "none" }}
+              >
+                {n.label}
+              </text>
+            </g>
+          );
+        })}
 
-      <text x="80" y="30" textAnchor="middle" fill="#111" fontSize="10" fontWeight="600">orchestrator</text>
-      <text x="180" y="83" textAnchor="middle" fill="#111" fontSize="10" fontWeight="600">research</text>
-      <text x="280" y="135" textAnchor="middle" fill="#111" fontSize="10" fontWeight="600">payment</text>
+        {!revoked && (
+          <circle r="2.5" fill="#38BDF8" opacity="0.9">
+            <animateMotion
+              dur="3.2s"
+              repeatCount="indefinite"
+              path="M160,35 L64,53 L40,102 L40,139"
+              keyTimes="0;0.33;0.66;1"
+              calcMode="linear"
+            />
+          </circle>
+        )}
+      </svg>
 
       {revoked && (
-        <g>
-          <rect x="35" y="182" width="290" height="22" rx="11" fill="#FEE2E2" stroke="#111" strokeWidth="2" />
-          <text x="180" y="197" textAnchor="middle" fill="#EF4444" fontSize="10" fontWeight="700">
-            revoked ancestor found {"→"} downstream execution blocked
-          </text>
-        </g>
+        <div className="border-t-2 border-nb-ink bg-red-50 px-2 py-1.5 text-center font-display text-[10px] font-bold leading-snug text-red-600">
+          research branch severed — root, ops &amp; audit still authorize
+        </div>
       )}
-    </svg>
+
+      <div className="relative z-[2] border-t-2 border-nb-ink bg-nb-card/80 px-2 py-1 font-mono text-[8px] leading-tight text-nb-ink/80 backdrop-blur-sm">
+        <div className="mb-0.5 flex items-center justify-between text-[7px] font-display font-bold uppercase tracking-wider text-nb-ink/45">
+          <span>process stream</span>
+          <span className="inline-flex items-center gap-1">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-nb-ok" />
+            live
+          </span>
+        </div>
+        <div className="max-h-[42px] space-y-0.5 overflow-hidden">
+          {[0, 1, 2].map((i) => {
+            const line = BG_LOG_LINES[(bgTick + i) % BG_LOG_LINES.length];
+            return (
+              <motion.div
+                key={`${bgTick}-${i}`}
+                initial={{ opacity: 0, x: 6 }}
+                animate={{ opacity: 0.35 + i * 0.28, x: 0 }}
+                transition={{ duration: 0.25 }}
+                className="truncate border-l-2 border-nb-accent-2/40 pl-1.5 text-nb-ink/75"
+              >
+                {line}
+              </motion.div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -240,6 +414,12 @@ export default function Landing() {
   const [activeAttack, setActiveAttack] = useState(0);
   const [simStep, setSimStep] = useState(0);
   const [playing, setPlaying] = useState(true);
+  const [bgTick, setBgTick] = useState(0);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setBgTick((t) => t + 1), 850);
+    return () => window.clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (!playing) return;
@@ -291,8 +471,8 @@ export default function Landing() {
       </header>
 
       {/* ── Hero ── */}
-      <section className="mx-auto grid w-full max-w-[1280px] gap-8 px-4 pb-16 pt-12 sm:px-6 lg:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]">
-        <div>
+      <section className="mx-auto grid w-full min-w-0 max-w-[1280px] gap-8 px-4 pb-16 pt-12 sm:px-6 lg:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]">
+        <div className="min-w-0">
           <motion.div {...fadeUp()} className="nb-pill-accent">
             <Sparkles className="h-3 w-3" />
             Simulation-grade landing
@@ -335,7 +515,7 @@ export default function Landing() {
         </div>
 
         {/* ── Delegation Simulator ── */}
-        <motion.aside {...fadeUp(0.1)} className="nb-card">
+        <motion.aside {...fadeUp(0.1)} className="nb-card min-w-0 overflow-hidden">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-sm font-display font-bold text-nb-ink">Delegation simulator</h3>
             <button type="button" onClick={() => setPlaying((v) => !v)} className="nb-pill hover:bg-nb-accent/30 transition-colors">
@@ -344,7 +524,7 @@ export default function Landing() {
             </button>
           </div>
 
-          <DelegationTopology stage={SIM_STEPS[simStep].stage} />
+          <DelegationTopology stage={SIM_STEPS[simStep].stage} bgTick={bgTick} />
 
           <div className={`mt-4 rounded-nb border-2 px-3 py-2 font-display ${simTone}`}>
             <p className="text-xs font-bold">{SIM_STEPS[simStep].title}</p>
@@ -364,7 +544,7 @@ export default function Landing() {
           </div>
 
           <div className="mt-4 text-[11px] font-display font-semibold text-nb-ink/50">
-            simulated execution path: A {"→"} B {"→"} C, then revoke(A)
+            simulated path: root {"→"} rsch {"→"} pay {"→"} x402 — final step revokes the rsch branch only
           </div>
         </motion.aside>
       </section>

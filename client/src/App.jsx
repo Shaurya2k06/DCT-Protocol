@@ -1,7 +1,6 @@
 import { Routes, Route } from "react-router-dom";
 import Sidebar from "./components/layout/Sidebar";
 import TlsnDemo from "./pages/TlsnDemo";
-import Demo from "./pages/Demo";
 import LiveDemo from "./pages/LiveDemo";
 import LayerConsole from "./pages/LayerConsole";
 import Landing from "./pages/Landing";
@@ -24,7 +23,6 @@ function AppShellRoutes() {
         <Routes>
           <Route path="tlsn" element={<TlsnDemo />} />
           <Route path="live-demo" element={<LiveDemo />} />
-          <Route path="demo" element={<Demo />} />
           <Route path="layer" element={<LayerConsole />} />
           {/* default inner page */}
           <Route index element={<TlsnDemo />} />
@@ -40,7 +38,6 @@ function App() {
         <Route path="/" element={<Landing />} />
         {/* Keep legacy direct routes working */}
         <Route path="/live-demo" element={<ShellLayout><LiveDemo /></ShellLayout>} />
-        <Route path="/demo" element={<ShellLayout><Demo /></ShellLayout>} />
         <Route path="/tlsn" element={<ShellLayout><TlsnDemo /></ShellLayout>} />
         <Route path="/layer" element={<ShellLayout><LayerConsole /></ShellLayout>} />
         <Route path="/app/*" element={<AppShellRoutes />} />

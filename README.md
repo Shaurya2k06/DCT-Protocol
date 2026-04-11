@@ -148,13 +148,20 @@ Security tests cover: scope mismatch, over-spend, expiry, wrong tool, scope comm
 
 ## SDK
 
+Published as **`@shaurya2k06/dctsdk`** (this repo uses `file:../packages/dct-sdk` in `server/package.json`, so you do not need to republish to develop locally).
+
 ```bash
-npm install @shaurya2k06/dctsdk
+npm install @shaurya2k06/dctsdk@^1.1.0
 ```
 
 ```js
-import { mintRootToken, attenuateToken, authorizeToken, delegate, execute, revoke } from '@shaurya2k06/dctsdk';
+import {
+  mintRootToken, attenuateToken, authorizeToken, delegate, execute, revoke,
+  computeTrustProfile,
+} from "@shaurya2k06/dctsdk";
 ```
+
+`computeTrustProfile` and related helpers mirror `pythonNodes/trustScores.py` (DCT three-signal model). Publish a new version from `packages/dct-sdk` with `npm publish` when releasing for npm consumers.
 
 See [`docs/LOCAL_DEV.md`](docs/LOCAL_DEV.md) for a full local Anvil walkthrough.
 

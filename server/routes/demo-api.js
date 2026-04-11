@@ -32,8 +32,29 @@ import {
   ethers,
 } from "../lib/blockchain.js";
 import { sendValidateActionWithScopeUserOp } from "../lib/aa/pimlico-execute.mjs";
+import {
+  computeDctTrustForAgent,
+  trustProfileToApi,
+} from "../lib/dctEnforcerTrust.mjs";
+import { syncTrustProfileToDb } from "../lib/db.js";
 
 const router = express.Router();
+
+function scheduleTrustProfileRefresh(agentId) {
+  const aid = String(agentId ?? "0");
+  setImmediate(async () => {
+    try {
+      const { profile } = await computeDctTrustForAgent(aid);
+      const p = trustProfileToApi(profile);
+      const sync = await syncTrustProfileToDb(aid, p);
+      if (!sync.ok) {
+        /* no_database — already warned in db.js */
+      }
+    } catch (err) {
+      console.warn("[execute/submit] trust profile refresh:", err.message);
+    }
+  });
+}
 
 /** Ensure JSON never sends revertReason as a bare object (avoids "[object Object]" in UIs). */
 function stringifyRevertReason(value) {
@@ -453,6 +474,8 @@ router.post("/execute/submit", async (req, res) => {
             expiresAt: BigInt(expiresAt),
           });
 
+          scheduleTrustProfileRefresh(agentId ?? meta.agentId ?? "0");
+
           return res.json({
             txHash:       aaResult.userOpHash,
             blockNumber:  null,
@@ -493,6 +516,8 @@ router.post("/execute/submit", async (req, res) => {
       effectiveGasPrice: result.effectiveGasPrice ?? null,
       path:         "eoa",
     });
+
+    if (result.success) scheduleTrustProfileRefresh(agentId);
   } catch (e) {
     console.error("execute/submit:", e.message);
     res.status(500).json({ error: e.message });
@@ -514,6 +539,22 @@ router.get("/trust/:agentId", async (req, res) => {
       registry.trustScore(BigInt(agentId)),
       registry.maxGrantableSpend(BigInt(agentId), 50_000_000n).catch(() => 0n),
     ]);
+
+    let dctTrustProfile = null;
+    let dctTrustMeta = null;
+    let trustProfileDbSync = null;
+    try {
+      const { profile, events } = await computeDctTrustForAgent(agentId);
+      dctTrustProfile = trustProfileToApi(profile);
+      dctTrustMeta = {
+        formula: "dct_signals_v1",
+        enforcerEventCount: events.length,
+      };
+      trustProfileDbSync = await syncTrustProfileToDb(agentId, dctTrustProfile);
+    } catch (err) {
+      dctTrustMeta = { formula: "dct_signals_v1", error: err.message };
+    }
+
     res.json({
       agentId,
       trustScore: ethers.formatEther(trustScoreRaw),
@@ -521,6 +562,11 @@ router.get("/trust/:agentId", async (req, res) => {
       maxGrantableSpend: maxGrantable.toString(),
       score: Number(trustScoreRaw) / 1e18,
       maxSpend: `$${(Number(maxGrantable) / 1e6).toFixed(2)}`,
+      dctTrustProfile,
+      dctTrustMeta,
+      dctCompositePercent:
+        dctTrustProfile != null ? dctTrustProfile.composite_score * 100 : null,
+      trustProfileDbSync,
     });
   } catch (e) {
     res.status(500).json({ error: e.message });

@@ -8,6 +8,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { setDCTContext } from "@shaurya2k06/dctsdk";
 import { resolveHttpRpcUrl, missingRpcHelp } from "./rpc-url.mjs";
+import { createRetryingJsonRpcProvider } from "./rpc-provider.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SERVER_ROOT = path.join(__dirname, "..");
@@ -22,7 +23,7 @@ export function getProvider() {
     if (!rpcUrl) {
       throw new Error(missingRpcHelp());
     }
-    provider = new ethers.JsonRpcProvider(rpcUrl);
+    provider = createRetryingJsonRpcProvider(rpcUrl);
   }
   return provider;
 }

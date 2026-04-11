@@ -8,7 +8,7 @@
  *   Phase 2  — root Biscuit token minted (off-chain, timed)
  *   Phase 3  — Orchestrator → Research delegation
  *   Phase 4  — Research → Payment delegation
- *   Phase 5  — Successful execution (4-check trace)
+ *   Phase 5  — Successful executions: Research web_fetch + Payment x402_pay (enforcer events for trust)
  *   Phase 6  — Off-chain scope violation (zero gas)
  *   Phase 7  — On-chain scope violation (revert)
  *   Phase 8  — Cascade revocation (single tx)
@@ -57,6 +57,14 @@ function txNorm(t) {
 }
 
 /** API / ethers sometimes return nested objects; avoid "[object Object]" in logs. */
+/** Prefer DCT three-signal composite (0–100); fall back to on-chain registry score×100. */
+function trustCompositePercent(t) {
+  if (t == null) return null;
+  if (t.dctCompositePercent != null) return Number(t.dctCompositePercent);
+  if (t.dctTrustProfile?.composite_score != null) return t.dctTrustProfile.composite_score * 100;
+  return Number(t.score ?? 0) * 100;
+}
+
 function formatExecRevert(exec) {
   const pick = (v) => {
     if (v == null || v === "") return "";
@@ -96,7 +104,8 @@ function getDefaultLive() {
     tokens: { root: null, research: null, payment: null },
     revIds: { root: null, research: null, payment: null },
     transactions: [],
-    trustScores: { orchestrator: 100, research: 0, payment: 0 },
+    trustScores: { orchestrator: 0, research: 0, payment: 0 },
+    trustDetail: { orchestrator: null, research: null, payment: null },
     timings: {},
     treeState: "empty",
     activeNode: null,
@@ -210,9 +219,12 @@ function AgentTree({ treeState, activeNode, lineageStep, agents, trustScores }) 
               </text>
             )}
             {/* trust score */}
-            {trustScores[id] !== undefined && (
+            {trustScores[id] != null && trustScores[id] !== "" && (
               <text x={n.x + 44} y={n.y - 28} fontSize={9}
-                fill={trustScores[id] >= 100 ? "#34d399" : trustScores[id] < 100 ? "#ef4444" : "#9ca3af"}
+                fill={
+                  Number(trustScores[id]) >= 70 ? "#34d399" :
+                  Number(trustScores[id]) >= 40 ? "#fbbf24" : "#ef4444"
+                }
                 fontFamily="monospace" fontWeight={700}>
                 {Number(trustScores[id]).toFixed(1)}
               </text>
@@ -327,11 +339,14 @@ function DelegationDiff({ before, after, highlights }) {
 
 // ─── trust badge ──────────────────────────────────────────────────────────────
 
-function TrustBadge({ label, score, change }) {
+function TrustBadge({ label, score, change, tier }) {
   return (
     <div className="flex items-center gap-2 p-2 rounded-nb border-2 border-nb-ink bg-nb-card">
       <span className="text-xs font-display font-semibold text-nb-ink/60">{label}</span>
-      <span className="text-xs font-mono font-bold text-nb-ink">{Number(score).toFixed(1)}</span>
+      {tier && (
+        <span className="text-[10px] font-mono font-bold text-nb-accent-2">{tier}</span>
+      )}
+      <span className="text-xs font-mono font-bold text-nb-ink">{Number(score).toFixed(1)}%</span>
       {change && (
         <span className={`text-[11px] font-bold ${change > 0 ? "text-[#34d399]" : "text-[#ef4444]"}`}>
           {change > 0 ? "+" : ""}{change}
@@ -574,7 +589,8 @@ export default function LiveDemo() {
             revIds:  { ...wf().revIds,  root: r.revocationId },
             timings: { ...wf().timings, rootCreate: r.creationTimeMs },
             treeState: "root_active",
-            trustScores: { orchestrator: 100, research: 0, payment: 0 },
+            trustScores: { orchestrator: 0, research: 0, payment: 0 },
+            trustDetail: { orchestrator: null, research: null, payment: null },
           });
           break;
         }
@@ -591,7 +607,11 @@ export default function LiveDemo() {
           try {
             const trust = await call("GET", `/api/trust/${childId}`);
             maxSpend = trust.maxSpend || maxSpend;
-            addLog(`  Trust: ${Number(trust.score || 0).toFixed(2)} → max grantable: ${maxSpend}`);
+            const dct = trustCompositePercent(trust);
+            addLog(`  On-chain registry: ${Number(trust.score || 0).toFixed(4)} → max grantable: ${maxSpend}`);
+            if (dct != null) {
+              addLog(`  DCT composite (S1/S2/S3): ${dct.toFixed(1)}% · tier ${trust.dctTrustProfile?.tier ?? "—"}`);
+            }
           } catch { addLog("  Trust check skipped (cold start → $5.00 grantable)", "info"); }
 
           addLog("Attenuating Biscuit token offline…");
@@ -634,7 +654,7 @@ export default function LiveDemo() {
             revIds:  { ...wf().revIds,  research: childRevId },
             timings: { ...wf().timings, attenuate1: attMs },
             treeState: "delegation_1_active",
-            trustScores: { ...wf().trustScores, research: 100 },
+            trustScores: { ...wf().trustScores, research: 50 },
           });
           break;
         }
@@ -691,7 +711,7 @@ export default function LiveDemo() {
             revIds:  { ...wf().revIds,  payment: childRevId },
             timings: { ...wf().timings, attenuate2: attMs, totalAttenuation: total },
             treeState: "full_tree_active",
-            trustScores: { ...wf().trustScores, payment: 100 },
+            trustScores: { ...wf().trustScores, payment: 50 },
           });
           break;
         }
@@ -836,10 +856,80 @@ export default function LiveDemo() {
               path: exec.path,
             });
             logChainFootprint("enforcer execute", exec);
-            patchLive({
-              treeState: "execution_success",
-              trustScores: { ...wf().trustScores, research: (wf().trustScores.research || 100) + 1 },
-            });
+            try {
+              const tr = await call("GET", `/api/trust/${wf().agents.research ?? "1"}`);
+              const pct = trustCompositePercent(tr);
+              patchLive({
+                treeState: "execution_success",
+                trustScores: {
+                  ...wf().trustScores,
+                  research: pct != null ? pct : wf().trustScores.research,
+                },
+                trustDetail: {
+                  ...wf().trustDetail,
+                  research: tr.dctTrustProfile ?? wf().trustDetail.research,
+                },
+              });
+            } catch {
+              patchLive({ treeState: "execution_success" });
+            }
+
+            // Second on-chain execution — Payment agent, in-scope spend (feeds ActionValidated for agent #payment)
+            const wr = workflowRef.current ?? wf();
+            const payTok = wr.tokens.payment;
+            const payAgent = wr.agents.payment ?? "2";
+            if (payTok) {
+              addLog("\n[chain] Second execution — Payment Agent · x402_pay ($1.00 within $2.00 limit)…");
+              const localPay = await call("POST", "/api/execute/verify-local", {
+                tokenId: payTok,
+                agentId: payAgent,
+                tool: "x402_pay",
+                spendAmount: 1_000_000,
+              });
+              addLog(
+                `${localPay.passed ? "✓" : "✗"} Local Datalog ${localPay.passed ? "passed" : "failed"} — ${localPay.reason || ""}`,
+                localPay.passed ? "success" : "warning"
+              );
+              const payExec = await call("POST", "/api/execute/submit", {
+                tokenId: payTok,
+                agentId: payAgent,
+                tool: "x402_pay",
+                spendAmount: 1_000_000,
+              });
+              if (payExec.success) {
+                addLog(`✓ Payment action validated — tx: ${shorten(payExec.txHash)}`, "success");
+                addTx({
+                  hash: payExec.txHash,
+                  label: "DCTEnforcer.validateActionWithScope (x402_pay)",
+                  blockNumber: payExec.blockNumber,
+                  gasUsed: payExec.gasUsed,
+                  feeWei: payExec.feeWei,
+                  path: payExec.path,
+                });
+                logChainFootprint("enforcer payment execute", payExec);
+                try {
+                  const trp = await call("GET", `/api/trust/${payAgent}`);
+                  const pctP = trustCompositePercent(trp);
+                  patchLive({
+                    trustScores: {
+                      ...(workflowRef.current ?? wr).trustScores,
+                      payment: pctP != null ? pctP : (workflowRef.current ?? wr).trustScores.payment,
+                    },
+                    trustDetail: {
+                      ...(workflowRef.current ?? wr).trustDetail,
+                      payment: trp.dctTrustProfile ?? (workflowRef.current ?? wr).trustDetail.payment,
+                    },
+                  });
+                } catch {
+                  /* ignore */
+                }
+              } else {
+                addLog(`⚠ Payment enforcer: ${formatExecRevert(payExec)}`, "warning");
+                addLog("  (Second execution is optional for demo narrative — trust still uses research tx)", "info");
+              }
+            } else {
+              addLog("  (No payment delegation token — skipped second execution; complete Phase 4 first)", "info");
+            }
           } else {
             addLog(`✗ Enforcer rejected: ${formatExecRevert(exec)}`, "error");
             addLog("  (Token not registered on-chain — run the delegate steps first)", "info");
@@ -919,9 +1009,27 @@ export default function LiveDemo() {
               logChainFootprint("enforcer (revert)", exec);
             }
             addLog("  Scope commitment hash cannot be faked — registered at delegation time", "warning");
-            patchLive({
-              trustScores: { ...wf().trustScores, payment: Math.round((wf().trustScores.payment || 100) * 0.9) },
-            });
+            try {
+              const tr = await call("GET", `/api/trust/${wf().agents.payment ?? "2"}`);
+              const pct = trustCompositePercent(tr);
+              patchLive({
+                trustScores: {
+                  ...wf().trustScores,
+                  payment: pct != null ? pct : Math.round((wf().trustScores.payment || 50) * 0.9),
+                },
+                trustDetail: {
+                  ...wf().trustDetail,
+                  payment: tr.dctTrustProfile ?? wf().trustDetail.payment,
+                },
+              });
+            } catch {
+              patchLive({
+                trustScores: {
+                  ...wf().trustScores,
+                  payment: Math.round((wf().trustScores.payment || 50) * 0.9),
+                },
+              });
+            }
           } else {
             addLog("  (Token not on-chain — scope would revert if registered with $2 limit)", "info");
           }
@@ -1024,8 +1132,9 @@ export default function LiveDemo() {
 
         // ── Phase 10: trust summary ──
         case 10: {
-          addLog("Fetching on-chain trust scores…");
+          addLog("Fetching DCT trust profiles (S1 scope · S2 tasks · S3 outcome) + registry score…");
           const scores = { ...wf().trustScores };
+          const detail = { ...wf().trustDetail };
           for (const [key, id] of [
             ["orchestrator", wf().agents.orchestrator ?? "0"],
             ["research",     wf().agents.research     ?? "1"],
@@ -1033,12 +1142,18 @@ export default function LiveDemo() {
           ]) {
             try {
               const t = await call("GET", `/api/trust/${id}`);
-              scores[key] = Number(t.score ?? 0) * 100;
-              addLog(`  Agent #${id} (${key}): ${scores[key].toFixed(1)} pts`, "info");
+              const pct = trustCompositePercent(t);
+              if (pct != null) scores[key] = pct;
+              detail[key] = t.dctTrustProfile ?? null;
+              const chain = Number(t.score ?? 0).toFixed(4);
+              addLog(
+                `  Agent #${id} (${key}): DCT ${pct != null ? `${pct.toFixed(1)}%` : "—"} · tier ${t.dctTrustProfile?.tier ?? "—"} · chain ${chain}`,
+                "info"
+              );
             } catch { addLog(`  Agent #${id}: trust query failed`, "warning"); }
           }
-          patchLive({ trustScores: scores });
-          addLog("\n✓ Scores are on-chain. Updated only by DCTEnforcer. Cannot be faked.", "success");
+          patchLive({ trustScores: scores, trustDetail: detail });
+          addLog("\n✓ DCT composite matches pythonNodes/trustScores.py; registry trustScore is on-chain baseline.", "success");
           break;
         }
 
@@ -1154,7 +1269,7 @@ export default function LiveDemo() {
     "Creating Root Permission Token",
     "Orchestrator → Research Delegation",
     "Research → Payment Delegation",
-    "Research Agent Executes web_fetch (TLSNotary + Enforcer)",
+    "Two On-Chain Executions — web_fetch + x402_pay",
     "Research Agent Tries Forbidden Tool",
     "Payment Agent Tries to Overspend",
     "Cascade Revocation — One Transaction",
@@ -1169,12 +1284,12 @@ export default function LiveDemo() {
     "Offline, instant, pure Ed25519 cryptography",
     "Authority narrows. Registered on-chain.",
     "Full delegation tree: Orchestrator → Research → Payment",
-    "TLSNotary prove (origin + op + session) → Biscuit → DCTEnforcer + oracle attestation",
+    "TLSNotary + Research enforcer tx, then Payment x402_pay ($1) — two ActionValidated events for trust DB",
     "Rejected before touching the blockchain — zero gas",
     "Passes local check, reverts on-chain",
     "Single SSTORE. O(1). No gas bomb.",
     "isRevoked() walks: Payment → Research → Root ✗",
-    "On-chain reputation. Enforcer-only updates.",
+    "Three-signal composite from enforcer events; compare to on-chain trustScore.",
     "Three agents. One protocol. MIT licensed.",
   ];
 
@@ -1442,25 +1557,31 @@ export default function LiveDemo() {
                 {/* Phase 10: trust scores */}
                 {step === 10 && (
                   <div className="space-y-3">
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      Composite = 0.50×S1 (scope + EMA) + 0.20×S2 (task validators) + 0.30×S3 (time-weighted outcome).
+                      Same formula as <code className="text-nb-accent-2">pythonNodes/trustScores.py</code> /{" "}
+                      <code className="text-nb-accent-2">dct_integration.py</code>.
+                    </p>
                     <div className="flex flex-wrap gap-2">
-                      <TrustBadge label="Orchestrator" score={live.trustScores.orchestrator || 100} change={0} />
-                      <TrustBadge label="Research" score={live.trustScores.research || 100} change={live.trustScores.research > 100 ? 1 : 0} />
-                      <TrustBadge label="Payment" score={live.trustScores.payment || 100} change={live.trustScores.payment < 100 ? -10 : 0} />
+                      <TrustBadge label="Orchestrator" tier={live.trustDetail?.orchestrator?.tier} score={live.trustScores.orchestrator ?? 0} change={0} />
+                      <TrustBadge label="Research" tier={live.trustDetail?.research?.tier} score={live.trustScores.research ?? 0} change={0} />
+                      <TrustBadge label="Payment" tier={live.trustDetail?.payment?.tier} score={live.trustScores.payment ?? 0} change={0} />
                     </div>
                     <div className="space-y-1.5 mt-2">
-                      {[
-                        { event: "Demo started",              research: 0,   payment: 0   },
-                        { event: "Agents initialized",        research: 100, payment: 100 },
-                        { event: "Research executed",         research: 101, payment: 100 },
-                        { event: "Payment violated",          research: 101, payment: 90  },
-                        { event: "Root revoked",              research: 101, payment: 90  },
-                      ].map((r, i) => (
-                        <div key={i} className="flex items-center gap-3 text-[11px] p-2 rounded-nb bg-nb-bg border border-nb-ink/20">
-                          <span className="text-muted-foreground flex-1">{r.event}</span>
-                          <span className="font-mono text-[#22d3ee]">R: {r.research}</span>
-                          <span className="font-mono text-[#34d399]">P: {r.payment}</span>
-                        </div>
-                      ))}
+                      {["orchestrator", "research", "payment"].map((role) => {
+                        const d = live.trustDetail?.[role];
+                        const pct = live.trustScores?.[role];
+                        return (
+                          <div key={role} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] p-2 rounded-nb bg-nb-bg border border-nb-ink/20">
+                            <span className="text-muted-foreground capitalize w-24">{role}</span>
+                            <span className="font-mono text-nb-ink">{pct != null ? `${Number(pct).toFixed(1)}%` : "—"}</span>
+                            <span className="font-mono text-nb-accent-2">{d?.tier ?? "—"}</span>
+                            <span className="font-mono text-nb-ink/70">S1 {d?.signal_1 != null ? d.signal_1.toFixed(2) : "—"}</span>
+                            <span className="font-mono text-nb-ink/70">S2 {d?.signal_2 != null ? d.signal_2.toFixed(2) : "—"}</span>
+                            <span className="font-mono text-nb-ink/70">S3 {d?.signal_3 != null ? d.signal_3.toFixed(2) : "—"}</span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}

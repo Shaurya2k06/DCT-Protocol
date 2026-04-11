@@ -10,6 +10,7 @@ const api = axios.create({
 
 // ── Agents ──
 export const getAgents = () => api.get("/api/agents").then((r) => r.data);
+/** @returns {Promise<{ tokenId: string, trustScore: string, dctTrustProfile?: object, dctCompositePercent?: number | null, offChainTrustProfile?: object }>} */
 export const getAgentTrust = (tokenId) =>
   api.get(`/api/agents/${tokenId}/trust`).then((r) => r.data);
 /** @param {{ uri?: string, agentURI?: string, ownerAddress?: string } | string} opts */

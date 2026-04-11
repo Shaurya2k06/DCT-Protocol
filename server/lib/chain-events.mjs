@@ -15,6 +15,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { resolveHttpRpcUrl, resolveWsRpcUrl } from "./rpc-url.mjs";
+import { createRetryingJsonRpcProvider } from "./rpc-provider.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -185,7 +186,7 @@ export async function subscribeChainEvents() {
     console.warn("[chain-events] no RPC URL; event stream disabled");
     return;
   }
-  const provider = new ethers.JsonRpcProvider(httpUrl);
+  const provider = createRetryingJsonRpcProvider(httpUrl);
   _pollHandle = setInterval(() => pollLogs(provider, addrs), 6_000);
   console.log("  Events:   HTTP polling fallback (6s interval)");
 }

@@ -19,6 +19,7 @@ import { proveAndAttest, getOracleAddress } from "../lib/tlsn/index.mjs";
 import { loadAddresses } from "../lib/blockchain.js";
 import { audit } from "../lib/audit.js";
 import { resolveHttpRpcUrl, missingRpcHelp } from "../lib/rpc-url.mjs";
+import { createRetryingJsonRpcProvider } from "../lib/rpc-provider.mjs";
 
 const router = express.Router();
 
@@ -134,7 +135,7 @@ router.post("/commit", async (req, res) => {
     const rpc = resolveHttpRpcUrl();
     if (!rpc) return res.status(500).json({ error: missingRpcHelp() });
 
-    const provider = new ethers.JsonRpcProvider(rpc);
+    const provider = createRetryingJsonRpcProvider(rpc);
     const signer = new ethers.Wallet(pk.startsWith("0x") ? pk : `0x${pk}`, provider);
 
     const verifierAbi = [

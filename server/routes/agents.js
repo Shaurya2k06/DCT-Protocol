@@ -5,7 +5,13 @@
 import express from "express";
 import { getERC8004, getRegistry, getSigner, ethers, loadAddresses } from "../lib/blockchain.js";
 import { audit } from "../lib/audit.js";
-import { getLatestTrustProfile, upsertTrustProfile } from "../lib/db.js";
+import {
+  getLatestTrustProfile,
+  upsertTrustProfile,
+  syncTrustProfileToDb,
+} from "../lib/db.js";
+import { computeDctTrustForAgent, trustProfileToApi } from "../lib/dctEnforcerTrust.mjs";
+import { queryFilterChunked } from "../lib/ethQueryFilterChunked.mjs";
 
 const router = express.Router();
 
@@ -35,7 +41,7 @@ router.get("/", async (req, res) => {
     } else {
       const fromBlock = Number(process.env.ERC8004_EVENTS_FROM_BLOCK || 0);
       const filter = erc8004.filters.Registered();
-      const events = await erc8004.queryFilter(filter, fromBlock, "latest");
+      const events = await queryFilterChunked(erc8004, filter, fromBlock, "latest");
       for (const ev of events) {
         const agentId = ev.args.agentId;
         const owner = await erc8004.ownerOf(agentId);
@@ -71,12 +77,26 @@ router.get("/:tokenId/trust", async (req, res) => {
     const maxGrantable = await registry.maxGrantableSpend(BigInt(tokenId), 50_000_000n);
     const offChainTrustProfile = await getLatestTrustProfile(tokenId);
 
+    let dctTrustProfile = null;
+    let trustProfileDbSync = null;
+    try {
+      const { profile } = await computeDctTrustForAgent(tokenId);
+      dctTrustProfile = trustProfileToApi(profile);
+      trustProfileDbSync = await syncTrustProfileToDb(tokenId, dctTrustProfile);
+    } catch (e) {
+      console.warn(`[agents/:tokenId/trust] DCT compute failed for ${tokenId}:`, e.message);
+    }
+
     res.json({
       tokenId,
       trustScore: ethers.formatEther(trustScoreRaw),
       trustScoreRaw: trustScoreRaw.toString(),
       maxGrantableSpend: maxGrantable.toString(),
       offChainTrustProfile,
+      dctTrustProfile,
+      dctCompositePercent:
+        dctTrustProfile != null ? dctTrustProfile.composite_score * 100 : null,
+      trustProfileDbSync,
     });
   } catch (error) {
     res.status(500).json({ error: error.message });

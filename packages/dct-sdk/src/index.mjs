@@ -1,5 +1,6 @@
 export * from "./sdk.mjs";
 export * from "./tlsn.mjs";
+export * from "./trustScores.mjs";
 export {
   setDCTContext,
   getRegistry,
