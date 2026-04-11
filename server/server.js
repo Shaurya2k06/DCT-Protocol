@@ -12,6 +12,7 @@ import { initRootKey } from "./lib/dct-sdk.js";
 import { wireDCTSdk, loadAddresses } from "./lib/blockchain.js";
 import { initDb, getPool } from "./lib/db.js";
 import { subscribeChainEvents, chainEvents } from "./lib/chain-events.mjs";
+import { rpcConfigLabel } from "./lib/rpc-url.mjs";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -70,11 +71,7 @@ app.get("/api/events", (req, res) => {
 // Health check
 app.get("/", (req, res) => {
   const addrs = loadAddresses();
-  const rpcMode = process.env.RPC_URL?.trim()
-    ? "RPC_URL"
-    : process.env.ALCHEMY_API_KEY
-      ? "alchemy-base-sepolia"
-      : "unset";
+  const rpcMode = rpcConfigLabel();
   const pool = getPool();
   res.json({
     name: "DCT Protocol Server",
@@ -130,14 +127,18 @@ async function start() {
     console.warn("  Events:   chain-events startup error —", e.message)
   );
 
+  if (!process.env.PRIVATE_KEY?.trim()) {
+    console.warn(
+      "  Wallet:   PRIVATE_KEY unset — read-only chain + Biscuit OK; delegate/execute/revoke need a key in .env"
+    );
+  }
+
   app.listen(PORT, () => {
     console.log(`\n═══════════════════════════════════════════`);
     console.log(`  DCT Protocol Server — Port ${PORT}`);
     console.log(`═══════════════════════════════════════════`);
     console.log(`  Biscuit:  Eclipse Biscuit WASM v0.6.0`);
-    const rpcLabel = process.env.RPC_URL?.trim()
-      ? "custom RPC_URL"
-      : "Base Sepolia (Alchemy)";
+    const rpcLabel = rpcConfigLabel();
     console.log(`  Chain:    ${rpcLabel}`);
     console.log(`  SDK:      delegate() · execute() · revoke()`);
     console.log(`  API:      http://localhost:${PORT}`);

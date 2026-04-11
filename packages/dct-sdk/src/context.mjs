@@ -25,6 +25,7 @@ export function getERC8004() {
   return _erc8004;
 }
 
+/** @returns {import('ethers').Wallet | null} null when host runs read-only (no PRIVATE_KEY). */
 export function getSigner() {
-  return _signer;
+  return _signer ?? null;
 }

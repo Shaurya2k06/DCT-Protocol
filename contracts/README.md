@@ -25,7 +25,8 @@ Set `PRIVATE_KEY` (uint256 hex). Defaults `ERC8004_IDENTITY_REGISTRY` to the [ca
 
 ```bash
 export PRIVATE_KEY=...
-export ALCHEMY_API_KEY=...   # or set BASE_SEPOLIA_RPC_URL to any Base Sepolia JSON-RPC
+export INFURA_PROJECT_ID=...   # or: export RPC_URL=https://base-sepolia.infura.io/v3/...
+# Legacy: ALCHEMY_API_KEY=...
 ./scripts/deploy-base-sepolia.sh
 ```
 
@@ -39,7 +40,7 @@ After a successful broadcast, sync app address files (reads `broadcast/DeployDCT
 node scripts/sync-addresses-from-broadcast.mjs --chain 84532 --erc8004 0x8004A818BFB912233c491871b3d84c89A494BD9e
 ```
 
-Then set server `RPC_URL` or `ALCHEMY_API_KEY` to Base Sepolia and optional contract overrides (`DCT_REGISTRY_ADDRESS`, etc.) — see `server/.env.example`.
+Then set server `INFURA_PROJECT_ID`, full `RPC_URL`, or legacy `ALCHEMY_API_KEY` for Base Sepolia, plus optional contract overrides (`DCT_REGISTRY_ADDRESS`, etc.) — see `server/.env.example`.
 
 Committed templates: `server/addresses.base-sepolia.json` and `client/src/addresses.base-sepolia.json` (official ERC-8004 only; fill DCT proxies after deploy or use env overrides).
 

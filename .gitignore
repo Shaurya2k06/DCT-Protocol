@@ -42,3 +42,6 @@ coverage/
 out/
 cache/
 broadcast/
+
+# Server-persisted operator workflow snapshots (may contain graph metadata)
+server/data/

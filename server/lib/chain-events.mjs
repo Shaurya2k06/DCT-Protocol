@@ -14,6 +14,7 @@ import { ethers } from "ethers";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { resolveHttpRpcUrl, resolveWsRpcUrl } from "./rpc-url.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -47,20 +48,11 @@ function loadAddresses() {
 }
 
 function wsRpcUrl() {
-  // Prefer explicit WS URL; try to convert HTTP alchemy to WSS.
-  const ws = process.env.WS_RPC_URL?.trim();
-  if (ws) return ws;
-  const key = process.env.ALCHEMY_API_KEY?.trim();
-  if (key) return `wss://base-sepolia.g.alchemy.com/v2/${key}`;
-  return null;
+  return resolveWsRpcUrl();
 }
 
 function httpRpcUrl() {
-  const u = process.env.RPC_URL?.trim();
-  if (u) return u;
-  const key = process.env.ALCHEMY_API_KEY?.trim();
-  if (key) return `https://base-sepolia.g.alchemy.com/v2/${key}`;
-  return null;
+  return resolveHttpRpcUrl();
 }
 
 function emit(type, data) {

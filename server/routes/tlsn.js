@@ -18,6 +18,7 @@ import { ethers } from "ethers";
 import { proveAndAttest, getOracleAddress } from "../lib/tlsn/index.mjs";
 import { loadAddresses } from "../lib/blockchain.js";
 import { audit } from "../lib/audit.js";
+import { resolveHttpRpcUrl, missingRpcHelp } from "../lib/rpc-url.mjs";
 
 const router = express.Router();
 
@@ -130,11 +131,8 @@ router.post("/commit", async (req, res) => {
 
     const pk = process.env.PRIVATE_KEY?.trim();
     if (!pk) return res.status(500).json({ error: "PRIVATE_KEY not set" });
-    const rpc = process.env.RPC_URL?.trim()
-      || (process.env.ALCHEMY_API_KEY
-        ? `https://base-sepolia.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`
-        : null);
-    if (!rpc) return res.status(500).json({ error: "RPC_URL or ALCHEMY_API_KEY required" });
+    const rpc = resolveHttpRpcUrl();
+    if (!rpc) return res.status(500).json({ error: missingRpcHelp() });
 
     const provider = new ethers.JsonRpcProvider(rpc);
     const signer = new ethers.Wallet(pk.startsWith("0x") ? pk : `0x${pk}`, provider);

@@ -13,11 +13,16 @@ unset DEPLOY_LOCAL_IDENTITY_REGISTRY || true
 
 RPC="${BASE_SEPOLIA_RPC_URL:-}"
 if [[ -z "${RPC}" ]]; then
-  if [[ -z "${ALCHEMY_API_KEY:-}" ]]; then
-    echo "Set BASE_SEPOLIA_RPC_URL or ALCHEMY_API_KEY" >&2
+  if [[ -n "${INFURA_PROJECT_ID:-}" ]]; then
+    RPC="https://base-sepolia.infura.io/v3/${INFURA_PROJECT_ID}"
+  elif [[ -n "${INFURA_API_KEY:-}" ]]; then
+    RPC="https://base-sepolia.infura.io/v3/${INFURA_API_KEY}"
+  elif [[ -n "${ALCHEMY_API_KEY:-}" ]]; then
+    RPC="https://base-sepolia.g.alchemy.com/v2/${ALCHEMY_API_KEY}"
+  else
+    echo "Set BASE_SEPOLIA_RPC_URL, or INFURA_PROJECT_ID, or legacy ALCHEMY_API_KEY" >&2
     exit 1
   fi
-  RPC="https://base-sepolia.g.alchemy.com/v2/${ALCHEMY_API_KEY}"
 fi
 
 echo "RPC: ${RPC%%\?*}…"

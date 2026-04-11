@@ -24,6 +24,7 @@ import {
 } from "@shaurya2k06/dctsdk";
 import { proveAndAttest, signNotaryAttestation } from "../lib/tlsn/index.mjs";
 import { initDb, getPool, recordAudit } from "../lib/db.js";
+import { resolveHttpRpcUrl, missingRpcHelp } from "../lib/rpc-url.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "..");
@@ -46,6 +47,14 @@ async function audit(kind, payload) {
   }
 }
 
+function safeJson(obj) {
+  return JSON.stringify(
+    obj,
+    (_, v) => (typeof v === "bigint" ? v.toString() : v),
+    2
+  );
+}
+
 async function main() {
   const expectedChain = 84532;
   const addrsPath = path.join(root, "addresses.json");
@@ -63,13 +72,9 @@ async function main() {
     process.exit(1);
   }
 
-  const rpc =
-    process.env.RPC_URL?.trim() ||
-    (process.env.ALCHEMY_API_KEY
-      ? `https://base-sepolia.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`
-      : null);
+  const rpc = resolveHttpRpcUrl();
   if (!rpc) {
-    console.error("Set RPC_URL or ALCHEMY_API_KEY for Base Sepolia.");
+    console.error(missingRpcHelp());
     process.exit(1);
   }
 
@@ -266,10 +271,10 @@ async function main() {
     tokenB64: minted.serialized,
     agentTokenId: String(agentId),
     toolName,
-    spendAmount: 1,
+    spendAmount: 0,
     tlsAttestation: tls,
   });
-  console.log("    result:", JSON.stringify(execResult, null, 2));
+  console.log("    result:", safeJson(execResult));
   await audit("demo.execute", {
     agentId,
     success: execResult.success,
@@ -278,7 +283,17 @@ async function main() {
   });
 
   if (!execResult.success) {
-    console.error("\nExecute failed — check notary key matches deployment notarySigner.");
+    console.error("\nExecute failed.");
+    console.error("    stage:", execResult.stage);
+    console.error("    error:", execResult.error ?? execResult.message ?? "(no detail)");
+    if (execResult.stage === "off-chain") {
+      console.error("    → Biscuit did not authorize (tool, spend, agent id, or expiry checks).");
+    } else if (execResult.stage === "on-chain") {
+      console.error("    → Enforcer tx mined but ActionValidated not emitted (scope / TLS attestation / registry).");
+      console.error("    → If TLS attestation failed: ensure NOTARY_PRIVATE_KEY matches NotaryAttestationVerifier.notarySigner.");
+    } else {
+      console.error("    → See error above (missing token meta, RPC, etc.).");
+    }
     process.exit(1);
   }
 

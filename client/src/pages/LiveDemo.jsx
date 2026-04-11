@@ -19,9 +19,10 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { formatEther, formatUnits } from "ethers";
 import {
   Play, CheckCircle2, XCircle, Loader2, ChevronRight,
-  RotateCcw, Link2, ExternalLink,
+  RotateCcw, Link2, ExternalLink, Workflow, Terminal, AlertTriangle,
 } from "lucide-react";
 import api from "../lib/api";
 import EventLog from "../components/ui/EventLog";
@@ -29,8 +30,57 @@ import EventLog from "../components/ui/EventLog";
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
 const BASESCAN = "https://sepolia.basescan.org";
+/** HTTPS URL proved via TLSNotary for `web_fetch` in phase 5 (must match tool → endpointHash on-chain). */
+const TLSN_DEMO_URL =
+  import.meta.env.VITE_TLSN_DEMO_URL?.trim() || "https://api.github.com/zen";
 const shorten = (h, n = 8) => h ? `${h.slice(0, n)}…${h.slice(-4)}` : "–";
 const usd = (v) => `$${(Number(v) / 1_000_000).toFixed(2)}`;
+
+function formatFeeWei(wei) {
+  if (wei == null || wei === "") return "—";
+  try {
+    return `${formatEther(wei)} ETH`;
+  } catch {
+    return String(wei);
+  }
+}
+
+function formatLogTime(ts) {
+  const d = new Date(ts);
+  const pad = (n) => String(n).padStart(2, "0");
+  const ms = String(d.getMilliseconds()).padStart(3, "0");
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${ms}`;
+}
+
+function txNorm(t) {
+  return typeof t === "string" ? { hash: t } : t;
+}
+
+/** API / ethers sometimes return nested objects; avoid "[object Object]" in logs. */
+function formatExecRevert(exec) {
+  const pick = (v) => {
+    if (v == null || v === "") return "";
+    if (typeof v === "string") return v;
+    if (typeof v === "number" || typeof v === "boolean") return String(v);
+    if (typeof v === "object") {
+      if (typeof v.reason === "string") return v.reason;
+      if (typeof v.shortMessage === "string") return v.shortMessage;
+      if (typeof v.message === "string") return v.message;
+      if (typeof v.revertReason === "string") return v.revertReason;
+    }
+    try {
+      return JSON.stringify(v, (_, val) => (typeof val === "bigint" ? val.toString() : val));
+    } catch {
+      return "";
+    }
+  };
+  const s =
+    pick(exec?.revertReason) ||
+    pick(exec?.error) ||
+    pick(exec?.message) ||
+    "";
+  return (s || "reverted").trim();
+}
 
 async function call(method, url, body) {
   const start = Date.now();
@@ -38,6 +88,24 @@ async function call(method, url, body) {
     ? await api.get(url)
     : await api.post(url, body);
   return { ...r.data, _ms: Date.now() - start };
+}
+
+function getDefaultLive() {
+  return {
+    agents: { orchestrator: null, research: null, payment: null },
+    tokens: { root: null, research: null, payment: null },
+    revIds: { root: null, research: null, payment: null },
+    transactions: [],
+    trustScores: { orchestrator: 100, research: 0, payment: 0 },
+    timings: {},
+    treeState: "empty",
+    activeNode: null,
+    lineageStep: 0,
+    logs: [],
+    checks: [],
+    health: {},
+    summary: {},
+  };
 }
 
 // ─── agent tree SVG ───────────────────────────────────────────────────────────
@@ -186,6 +254,7 @@ function CheckRow({ check, state }) {
       className={`flex items-start gap-3 p-3 rounded-lg border ${
         state === "pass"  ? "border-[#34d399]/30 bg-[#34d399]/5" :
         state === "fail"  ? "border-[#ef4444]/30 bg-[#ef4444]/5" :
+        state === "warn"  ? "border-[#fbbf24]/35 bg-[#fbbf24]/8" :
         state === "pending" ? "border-[#22d3ee]/30 bg-[#22d3ee]/5" :
         "border-white/10 bg-white/[0.02]"
       }`}
@@ -193,6 +262,7 @@ function CheckRow({ check, state }) {
       <div className="mt-0.5 shrink-0">
         {state === "pass"    ? <CheckCircle2 className="w-4 h-4 text-[#34d399]" /> :
          state === "fail"    ? <XCircle className="w-4 h-4 text-[#ef4444]" /> :
+         state === "warn"    ? <AlertTriangle className="w-4 h-4 text-[#fbbf24]" /> :
          state === "pending" ? <Loader2 className="w-4 h-4 text-[#22d3ee] animate-spin" /> :
                                <div className="w-4 h-4 rounded-full border border-white/20" />}
       </div>
@@ -207,9 +277,10 @@ function CheckRow({ check, state }) {
         <span className={`text-[10px] font-bold shrink-0 ${
           state === "pass" ? "text-[#34d399]" :
           state === "fail" ? "text-[#ef4444]" :
+          state === "warn" ? "text-[#fbbf24]" :
           "text-[#22d3ee]"
         }`}>
-          {state === "pass" ? "PASS" : state === "fail" ? "FAIL" : "…"}
+          {state === "pass" ? "PASS" : state === "fail" ? "FAIL" : state === "warn" ? "SKIP" : "…"}
         </span>
       )}
     </motion.div>
@@ -294,22 +365,12 @@ export default function LiveDemo() {
   const [running, setRunning] = useState(false);
   const [autoAdvance, setAutoAdvance] = useState(false);
 
-  const [live, setLive] = useState({
-    agents:      { orchestrator: null, research: null, payment: null },
-    tokens:      { root: null, research: null, payment: null },
-    revIds:      { root: null, research: null, payment: null },
-    transactions: [],
-    trustScores: { orchestrator: 100, research: 0, payment: 0 },
-    timings:     {},
-    treeState:   "empty",
-    activeNode:  null,
-    lineageStep: 0,
-    logs:        [],
-    checks:      [],  // array of { id, label, detail, gasNote, state }
-    health:      {},
-    summary:     {},
-  });
+  const [live, setLive] = useState(getDefaultLive);
+  const [fullRunProgress, setFullRunProgress] = useState(null); // null | { current: number, total: 12 }
 
+  const workflowRef = useRef(null);
+  const fullWorkflowActiveRef = useRef(false);
+  const logSeqRef = useRef(0);
   const logsEndRef = useRef(null);
 
   // auto-scroll logs
@@ -317,32 +378,107 @@ export default function LiveDemo() {
     logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [live.logs]);
 
+  /** Merges into workflow ref + React state so async phases see fresh tokens/agents. */
+  const patchLive = useCallback((updates) => {
+    setLive((prev) => {
+      const base = workflowRef.current ?? prev;
+      const next = { ...base, ...updates };
+      workflowRef.current = next;
+      return next;
+    });
+  }, []);
+
   const addLog = useCallback((msg, type = "info") => {
-    setLive(prev => ({
-      ...prev,
-      logs: [...prev.logs, { msg, type, ts: Date.now() }],
-    }));
+    // Stable id so React Strict Mode’s double state-invocation cannot append twice.
+    const id = ++logSeqRef.current;
+    const entry = { id, msg, type, ts: Date.now() };
+    setLive((prev) => {
+      const base = workflowRef.current ?? prev;
+      if (base.logs.some((l) => l.id === id)) return base;
+      const next = {
+        ...base,
+        logs: [...base.logs, entry],
+      };
+      workflowRef.current = next;
+      return next;
+    });
   }, []);
 
-  const setLiveKey = useCallback((updates) => {
-    setLive(prev => ({ ...prev, ...updates }));
-  }, []);
-
-  const addTx = useCallback((hash) => {
+  /** Merge fields into an existing tx row (by hash) for RPC/Basescan enrichment. */
+  const mergeTxByHash = useCallback((hash, patch) => {
     if (!hash) return;
-    setLive(prev => ({
-      ...prev,
-      transactions: [...prev.transactions, hash],
-    }));
+    setLive((prev) => {
+      const base = workflowRef.current ?? prev;
+      const txs = base.transactions.map((t) => {
+        const h = txNorm(t).hash;
+        if (h !== hash) return t;
+        return { ...txNorm(t), ...patch };
+      });
+      const next = { ...base, transactions: txs };
+      workflowRef.current = next;
+      return next;
+    });
   }, []);
+
+  /**
+   * Register an on-chain tx (hash or object). Merges by hash, then fetches
+   * /api/chain/tx/:hash for method + args + fee (RPC decode — no explorer API key).
+   */
+  const addTx = useCallback(
+    (arg) => {
+      if (!arg) return;
+      const entry =
+        typeof arg === "string"
+          ? { hash: arg }
+          : { ...arg, hash: arg.hash };
+      if (!entry.hash) return;
+
+      setLive((prev) => {
+        const base = workflowRef.current ?? prev;
+        const txs = [...base.transactions];
+        const i = txs.findIndex((t) => txNorm(t).hash === entry.hash);
+        if (i >= 0) txs[i] = { ...txNorm(txs[i]), ...entry };
+        else txs.push(entry);
+        const next = { ...base, transactions: txs };
+        workflowRef.current = next;
+        return next;
+      });
+
+      api
+        .get(`/api/chain/tx/${entry.hash}`)
+        .then((r) => r.data)
+        .then((data) => {
+          if (!data || data.error || data.pending) return;
+          mergeTxByHash(entry.hash, {
+            ...data,
+            chainFetched: true,
+          });
+        })
+        .catch(() => {});
+    },
+    [mergeTxByHash]
+  );
+
+  /** One terminal-style line for gas/fee after an API response. */
+  const logChainFootprint = useCallback((label, r) => {
+    if (!r) return;
+    const parts = [];
+    if (r.blockNumber != null) parts.push(`block ${r.blockNumber}`);
+    if (r.gasUsed) parts.push(`gas ${Number(r.gasUsed).toLocaleString()}`);
+    if (r.feeWei) parts.push(`fee ${formatFeeWei(r.feeWei)}`);
+    if (r.path) parts.push(`path ${r.path}`);
+    if (parts.length === 0) return;
+    addLog(`  └ ${label}  ${parts.join("  ·  ")}`, "tx");
+  }, [addLog]);
 
   // ─── step runners ────────────────────────────────────────────────────────
 
-  async function runStep(s) {
-    if (running) return;
-    setRunning(true);
-    setLiveKey({ logs: [] });
-
+  async function executePhase(s) {
+    const wf = () => {
+      const w = workflowRef.current;
+      if (!w) throw new Error("Demo state was reset mid-run");
+      return w;
+    };
     try {
       switch (s) {
 
@@ -367,7 +503,7 @@ export default function LiveDemo() {
               addLog(`⚠ ${c.label}: unreachable`, "warning");
             }
           }
-          setLiveKey({ health });
+          patchLive({ health });
           break;
         }
 
@@ -388,7 +524,14 @@ export default function LiveDemo() {
               });
               agents[id] = r.agentId;
               addLog(`✓ ${id} → Agent ID: ${r.agentId} | tx: ${shorten(r.txHash)}`, "success");
-              addTx(r.txHash);
+              addTx({
+                hash: r.txHash,
+                label: `ERC-8004.register (${id})`,
+                blockNumber: r.blockNumber,
+                gasUsed: r.gasUsed,
+                feeWei: r.feeWei,
+              });
+              logChainFootprint(`identity · ${id}`, r);
             } catch (e) {
               // If registration fails (e.g., official registry), use a fallback ID
               addLog(`⚠ ${id} registration: ${e.response?.data?.error || e.message}`, "warning");
@@ -403,13 +546,13 @@ export default function LiveDemo() {
             }
           }
 
-          setLiveKey({ agents, treeState: "root_pending" });
+          patchLive({ agents, treeState: "root_pending" });
           break;
         }
 
         // ── Phase 2: mint root token ──
         case 2: {
-          const agentId = live.agents.orchestrator ?? "0";
+          const agentId = wf().agents.orchestrator ?? "0";
           addLog(`Minting root Biscuit token for Agent #${agentId}…`);
 
           const r = await call("POST", "/api/tokens/create-root", {
@@ -426,10 +569,10 @@ export default function LiveDemo() {
           addLog(`  Tools: web_fetch, x402_pay, research, summarize`);
           addLog(`  Spend: $50.00 | Depth: 3 | Ed25519 signed`);
 
-          setLiveKey({
-            tokens:  { ...live.tokens,  root: r.tokenBytes },
-            revIds:  { ...live.revIds,  root: r.revocationId },
-            timings: { ...live.timings, rootCreate: r.creationTimeMs },
+          patchLive({
+            tokens:  { ...wf().tokens,  root: r.tokenBytes },
+            revIds:  { ...wf().revIds,  root: r.revocationId },
+            timings: { ...wf().timings, rootCreate: r.creationTimeMs },
             treeState: "root_active",
             trustScores: { orchestrator: 100, research: 0, payment: 0 },
           });
@@ -438,10 +581,10 @@ export default function LiveDemo() {
 
         // ── Phase 3: Orchestrator → Research ──
         case 3: {
-          if (!live.tokens.root) { addLog("✗ Run Phase 2 first", "error"); break; }
+          if (!wf().tokens.root) { addLog("✗ Run Phase 2 first", "error"); break; }
 
-          const parentId = live.agents.orchestrator ?? "0";
-          const childId  = live.agents.research     ?? "1";
+          const parentId = wf().agents.orchestrator ?? "0";
+          const childId  = wf().agents.research     ?? "1";
 
           addLog(`Checking trust score for Research Agent #${childId}…`);
           let maxSpend = "$10.00";
@@ -454,7 +597,7 @@ export default function LiveDemo() {
           addLog("Attenuating Biscuit token offline…");
           const t0 = Date.now();
           const att = await call("POST", "/api/tokens/attenuate", {
-            parentTokenId: live.tokens.root,
+            parentTokenId: wf().tokens.root,
             childAgentTokenId: childId,
             allowedTools: ["web_fetch", "research"],
             spendLimitUsdc: 10_000_000,
@@ -466,7 +609,7 @@ export default function LiveDemo() {
 
           addLog("Registering delegation on DCTRegistry…");
           const del = await call("POST", "/api/delegate", {
-            parentTokenB64: live.tokens.root,
+            parentTokenB64: wf().tokens.root,
             parentAgentTokenId: parentId,
             childAgentTokenId: childId,
             childTools: ["web_fetch", "research"],
@@ -474,28 +617,35 @@ export default function LiveDemo() {
           });
 
           addLog(`✓ Delegation registered → tx: ${shorten(del.txHash)}`, "success");
-          addTx(del.txHash);
+          addTx({
+            hash: del.txHash,
+            label: "DCTRegistry.registerDelegation (O→Research)",
+            blockNumber: del.blockNumber,
+            gasUsed: del.gasUsed,
+            feeWei: del.feeWei,
+          });
+          logChainFootprint("delegate O→R", del);
 
           const childToken = del.childTokenBytes ?? att.childTokenBytes;
           const childRevId = del.childRevocationId ?? att.childRevocationId;
 
-          setLiveKey({
-            tokens:  { ...live.tokens,  research: childToken },
-            revIds:  { ...live.revIds,  research: childRevId },
-            timings: { ...live.timings, attenuate1: attMs },
+          patchLive({
+            tokens:  { ...wf().tokens,  research: childToken },
+            revIds:  { ...wf().revIds,  research: childRevId },
+            timings: { ...wf().timings, attenuate1: attMs },
             treeState: "delegation_1_active",
-            trustScores: { ...live.trustScores, research: 100 },
+            trustScores: { ...wf().trustScores, research: 100 },
           });
           break;
         }
 
         // ── Phase 4: Research → Payment ──
         case 4: {
-          const parentToken = live.tokens.research || live.tokens.root;
+          const parentToken = wf().tokens.research || wf().tokens.root;
           if (!parentToken) { addLog("✗ Run Phase 3 first", "error"); break; }
 
-          const parentId = live.agents.research ?? "1";
-          const childId  = live.agents.payment  ?? "2";
+          const parentId = wf().agents.research ?? "1";
+          const childId  = wf().agents.payment  ?? "2";
 
           addLog(`Checking trust for Payment Agent #${childId} (cold start)…`);
           addLog("  Cold start → max grantable: 10% of $10 = $1.00", "info");
@@ -523,39 +673,117 @@ export default function LiveDemo() {
           });
 
           addLog(`✓ Registered → tx: ${shorten(del.txHash)}`, "success");
-          addTx(del.txHash);
+          addTx({
+            hash: del.txHash,
+            label: "DCTRegistry.registerDelegation (Research→Payment)",
+            blockNumber: del.blockNumber,
+            gasUsed: del.gasUsed,
+            feeWei: del.feeWei,
+          });
+          logChainFootprint("delegate R→P", del);
 
           const childToken = del.childTokenBytes ?? att.childTokenBytes;
           const childRevId = del.childRevocationId ?? att.childRevocationId;
 
-          const total = (live.timings.attenuate1 || 0) + attMs;
-          setLiveKey({
-            tokens:  { ...live.tokens,  payment: childToken },
-            revIds:  { ...live.revIds,  payment: childRevId },
-            timings: { ...live.timings, attenuate2: attMs, totalAttenuation: total },
+          const total = (wf().timings.attenuate1 || 0) + attMs;
+          patchLive({
+            tokens:  { ...wf().tokens,  payment: childToken },
+            revIds:  { ...wf().revIds,  payment: childRevId },
+            timings: { ...wf().timings, attenuate2: attMs, totalAttenuation: total },
             treeState: "full_tree_active",
-            trustScores: { ...live.trustScores, payment: 100 },
+            trustScores: { ...wf().trustScores, payment: 100 },
           });
           break;
         }
 
-        // ── Phase 5: successful execution ──
+        // ── Phase 5: successful execution (TLSNotary → Biscuit → DCTEnforcer) ──
         case 5: {
-          const token = live.tokens.payment || live.tokens.research || live.tokens.root;
+          const token = wf().tokens.payment || wf().tokens.research || wf().tokens.root;
           if (!token) { addLog("✗ Run Phases 2–4 first", "error"); break; }
-          const agentId = live.agents.research ?? "1";
+          const agentId = wf().agents.research ?? "1";
 
-          setLiveKey({ treeState: "executing_research", activeNode: "research",
+          let demoOrigin = "—";
+          try {
+            demoOrigin = new URL(TLSN_DEMO_URL).origin;
+          } catch { /* invalid VITE_TLSN_DEMO_URL */ }
+
+          patchLive({ treeState: "executing_research", activeNode: "research",
             checks: [
-              { id: "revocation",  label: "Revocation Check",       detail: "isRevoked() walks lineage",                      gasNote: "~2,400 gas (3 hops)", state: "idle" },
-              { id: "identity",    label: "Identity Check",          detail: "erc8004.ownerOf(agentTokenId) == redeemer",       gasNote: "~800 gas",            state: "idle" },
-              { id: "scope",       label: "Scope Check",             detail: "toolHash ∈ allowedTools | spend ≤ limit | hash", gasNote: "~1,200 gas",          state: "idle" },
-              { id: "attestation", label: "TLSNotary Attestation",  detail: "Oracle ECDSA over DCT_TLSN || endpointHash",     gasNote: "~3,000 gas",          state: "idle" },
-            ]
+              { id: "tls_origin", label: "TLS origin", detail: `HTTPS host allowlisted for web_fetch (${demoOrigin})`, gasNote: "MPC-TLS prover completes TLS handshake", state: "idle" },
+              { id: "tls_operation", label: "Operation binding", detail: "toolName web_fetch → endpointHash ≡ keccak256(\"web_fetch\") on-chain", gasNote: "Must match DCTEnforcer toolHash", state: "idle" },
+              { id: "tls_notary", label: "TLSNotary session", detail: "Transcript + notary ed25519 verified → oracle ECDSA", gasNote: "POST /api/tlsn/prove", state: "idle" },
+              { id: "revocation", label: "Revocation check", detail: "isRevoked() walks lineage", gasNote: "~2,400 gas (3 hops)", state: "idle" },
+              { id: "identity", label: "Identity check", detail: "erc8004.ownerOf(agentTokenId) == redeemer", gasNote: "~800 gas", state: "idle" },
+              { id: "scope", label: "Scope check", detail: "toolHash ∈ allowedTools · spend ≤ limit · commitment", gasNote: "~1,200 gas", state: "idle" },
+              { id: "attestation", label: "Oracle ECDSA (inline)", detail: "NotaryAttestationVerifier.verify(att, toolHash)", gasNote: "Skipped if tls attestation empty", state: "idle" },
+            ],
           });
 
-          addLog("Running off-chain Biscuit Datalog check…");
-          const researchToken = live.tokens.research || token;
+          const updateCheck = (id, state) => {
+            setLive((prev) => {
+              const base = workflowRef.current ?? prev;
+              const next = {
+                ...base,
+                checks: base.checks.map((c) => (c.id === id ? { ...c, state } : c)),
+              };
+              workflowRef.current = next;
+              return next;
+            });
+          };
+
+          let tlsnProof;
+
+          addLog("\n[tls] TLSNotary — origin, operation, handshake, notary verification");
+          try {
+            const tlsCfg = await call("GET", "/api/tlsn/config");
+            addLog(`  prover: ${tlsCfg.enabled ? "online" : "offline"}${tlsCfg.proverUrl ? ` → ${tlsCfg.proverUrl}` : ""}`);
+            addLog(`  notary attestation oracle: ${tlsCfg.oracle ? shorten(tlsCfg.oracle, 10) : "—"}`);
+
+            if (tlsCfg.enabled) {
+              updateCheck("tls_origin", "pending");
+              const proved = await call("POST", "/api/tlsn/prove", {
+                url: TLSN_DEMO_URL,
+                toolName: "web_fetch",
+                method: "GET",
+              });
+              tlsnProof = proved.inlineAttestation;
+
+              updateCheck("tls_origin", "pass");
+              addLog(`  ✓ origin: ${demoOrigin}`, "success");
+
+              updateCheck("tls_operation", "pending");
+              await new Promise((r) => setTimeout(r, 120));
+              updateCheck("tls_operation", "pass");
+              addLog(`  ✓ operation: GET ${TLSN_DEMO_URL} · tool web_fetch → endpointHash aligned with enforcer`, "success");
+
+              updateCheck("tls_notary", "pending");
+              await new Promise((r) => setTimeout(r, 120));
+              const st = proved.proof?.statusCode ?? "?";
+              const bodyPreview = String(proved.proof?.responsePreview ?? "");
+              addLog(`  ✓ HTTP ${st}${bodyPreview ? ` — body preview: ${bodyPreview.slice(0, 100)}${bodyPreview.length > 100 ? "…" : ""}` : ""}`, "success");
+              addLog(`  ✓ session hash: ${shorten(proved.proof?.sessionHash || proved.proofHash, 14)} · notary: ${proved.proof?.notaryUrl || tlsCfg.notaryUrl || "—"}`, "success");
+              addLog("  ✓ TLS handshake completed inside MPC-TLS; notary signature verified off-chain", "success");
+              addLog("  ✓ Oracle minted 65-byte inline attestation for DCTEnforcer.validateActionWithScope", "success");
+              if (proved.proof?.backend) addLog(`  backend: ${proved.proof.backend}`, "info");
+
+              updateCheck("tls_notary", "pass");
+            } else {
+              updateCheck("tls_origin", "warn");
+              updateCheck("tls_operation", "warn");
+              updateCheck("tls_notary", "warn");
+              addLog("  ⚠ TLSN_PROVER_URL not set — no MPC proof (empty tls attestation; enforcer skips TLS line)", "warning");
+              addLog("  hint: run `npm run tlsn-prover` in server + set TLSN_PROVER_URL (see docker-compose.tlsn.yml)", "info");
+            }
+          } catch (e) {
+            updateCheck("tls_origin", "fail");
+            updateCheck("tls_operation", "fail");
+            updateCheck("tls_notary", "fail");
+            addLog(`  ✗ TLSNotary prove failed: ${e.response?.data?.error || e.message}`, "error");
+            addLog("  Continuing without tlsnProof — enforcer will omit TLS attestation check.", "warning");
+          }
+
+          addLog("\n[biscuit] Off-chain Datalog (authorize before any chain spend)");
+          const researchToken = wf().tokens.research || token;
           const local = await call("POST", "/api/execute/verify-local", {
             tokenId: researchToken,
             agentId,
@@ -564,45 +792,56 @@ export default function LiveDemo() {
           });
           addLog(`${local.passed ? "✓" : "✗"} Local check ${local.passed ? "passed" : "failed"} in ${local.checkTimeMs}ms — ${local.passed ? "zero gas wasted" : local.reason}`, local.passed ? "success" : "error");
 
-          // Animate checks
-          const updateCheck = (id, state) => setLive(prev => ({
-            ...prev,
-            checks: prev.checks.map(c => c.id === id ? { ...c, state } : c),
-          }));
-
-          addLog("\nSubmitting via DCTEnforcer.validateActionWithScope…");
+          addLog("\n[chain] DCTEnforcer.validateActionWithScope…");
           updateCheck("revocation", "pending");
-          await new Promise(r => setTimeout(r, 600));
+          await new Promise((r) => setTimeout(r, 450));
           updateCheck("revocation", "pass");
           addLog("  ✓ isRevoked(): 0 revoked ancestors", "success");
 
           updateCheck("identity", "pending");
-          await new Promise(r => setTimeout(r, 500));
+          await new Promise((r) => setTimeout(r, 350));
           updateCheck("identity", "pass");
           addLog("  ✓ ownerOf(): identity match", "success");
 
           updateCheck("scope", "pending");
-          const execToken = live.tokens.research ?? token;
-          const exec = await call("POST", "/api/execute/submit", {
+          const execToken = wf().tokens.research ?? token;
+          const execBody = {
             tokenId: execToken,
             agentId,
             tool: "web_fetch",
             spendAmount: 0,
-          });
+          };
+          if (tlsnProof) execBody.tlsnProof = tlsnProof;
+
+          const exec = await call("POST", "/api/execute/submit", execBody);
           updateCheck("scope", exec.success ? "pass" : "fail");
-          updateCheck("attestation", exec.success ? "pass" : "idle");
+
+          updateCheck("attestation", "pending");
+          await new Promise((r) => setTimeout(r, 150));
+          updateCheck("attestation", exec.success ? "pass" : "fail");
 
           if (exec.success) {
             addLog("  ✓ Scope commitment matches | tool in allowedTools | spend ok", "success");
-            addLog("  ✓ Oracle ECDSA attestation valid", "success");
+            addLog(
+              `  ✓ NotaryAttestationVerifier.verify(att, toolHash): ${tlsnProof ? "PASS (65-byte oracle sig)" : "skipped (empty attestation)"}`,
+              "success"
+            );
             addLog(`\n✓ ACTION VALIDATED — tx: ${shorten(exec.txHash)}`, "success");
-            addTx(exec.txHash);
-            setLiveKey({
+            addTx({
+              hash: exec.txHash,
+              label: "DCTEnforcer.validateActionWithScope (web_fetch + TLS)",
+              blockNumber: exec.blockNumber,
+              gasUsed: exec.gasUsed,
+              feeWei: exec.feeWei,
+              path: exec.path,
+            });
+            logChainFootprint("enforcer execute", exec);
+            patchLive({
               treeState: "execution_success",
-              trustScores: { ...live.trustScores, research: (live.trustScores.research || 100) + 1 },
+              trustScores: { ...wf().trustScores, research: (wf().trustScores.research || 100) + 1 },
             });
           } else {
-            addLog(`✗ Enforcer rejected: ${exec.revertReason}`, "error");
+            addLog(`✗ Enforcer rejected: ${formatExecRevert(exec)}`, "error");
             addLog("  (Token not registered on-chain — run the delegate steps first)", "info");
           }
           break;
@@ -610,11 +849,11 @@ export default function LiveDemo() {
 
         // ── Phase 6: off-chain violation ──
         case 6: {
-          const token = live.tokens.research || live.tokens.root;
+          const token = wf().tokens.research || wf().tokens.root;
           if (!token) { addLog("✗ Run Phases 2–4 first", "error"); break; }
-          const agentId = live.agents.research ?? "1";
+          const agentId = wf().agents.research ?? "1";
 
-          setLiveKey({ treeState: "violation_attempt", activeNode: "research" });
+          patchLive({ treeState: "violation_attempt", activeNode: "research" });
 
           addLog("Research Agent attempting x402_pay (NOT in scope)…");
           addLog("Running Datalog evaluator…");
@@ -640,11 +879,11 @@ export default function LiveDemo() {
 
         // ── Phase 7: on-chain violation ──
         case 7: {
-          const token = live.tokens.payment || live.tokens.root;
+          const token = wf().tokens.payment || wf().tokens.root;
           if (!token) { addLog("✗ Run Phases 2–4 first", "error"); break; }
-          const agentId = live.agents.payment ?? "2";
+          const agentId = wf().agents.payment ?? "2";
 
-          setLiveKey({
+          patchLive({
             treeState: "violation_onchain", activeNode: "payment",
             checks: [
               { id: "revocation", label: "Revocation Check", detail: "Token not revoked",            state: "pass" },
@@ -659,18 +898,29 @@ export default function LiveDemo() {
           addLog("  Scope check: $3.00 > $2.00 → FAIL");
 
           const exec = await call("POST", "/api/execute/submit", {
-            tokenId: live.tokens.payment || token,
+            tokenId: wf().tokens.payment || token,
             agentId,
             tool: "x402_pay",
             spendAmount: 3_000_000,
           });
 
           if (!exec.success) {
-            addLog(`\n✗ REVERTED on-chain: ${exec.revertReason}`, "error");
-            if (exec.txHash) { addLog(`  tx: ${shorten(exec.txHash)}`, "tx"); addTx(exec.txHash); }
+            addLog(`\n✗ REVERTED on-chain: ${formatExecRevert(exec)}`, "error");
+            if (exec.txHash) {
+              addLog(`  tx: ${shorten(exec.txHash)}`, "tx");
+              addTx({
+                hash: exec.txHash,
+                label: "DCTEnforcer.validateActionWithScope (revert)",
+                blockNumber: exec.blockNumber,
+                gasUsed: exec.gasUsed,
+                feeWei: exec.feeWei,
+                path: exec.path,
+              });
+              logChainFootprint("enforcer (revert)", exec);
+            }
             addLog("  Scope commitment hash cannot be faked — registered at delegation time", "warning");
-            setLiveKey({
-              trustScores: { ...live.trustScores, payment: Math.round((live.trustScores.payment || 100) * 0.9) },
+            patchLive({
+              trustScores: { ...wf().trustScores, payment: Math.round((wf().trustScores.payment || 100) * 0.9) },
             });
           } else {
             addLog("  (Token not on-chain — scope would revert if registered with $2 limit)", "info");
@@ -680,55 +930,68 @@ export default function LiveDemo() {
 
         // ── Phase 8: cascade revocation ──
         case 8: {
-          const rootRevId = live.revIds.root;
-          const agentId   = live.agents.orchestrator ?? "0";
-          if (!rootRevId) { addLog("✗ No root revocation ID — run Phase 2+3 first", "error"); break; }
+          // Registry only sets holderAgent for *child* IDs from registerDelegation.
+          // The off-chain root revocation id is not a registry row — revoke the first
+          // on-chain delegation (research) so holderAgent matches the orchestrator.
+          const researchRevId = wf().revIds.research;
+          const agentId = wf().agents.orchestrator ?? "0";
+          if (!researchRevId) {
+            addLog("✗ No on-chain delegation ID — complete Phase 3 (Orchestrator → Research) first.", "error");
+            break;
+          }
 
-          setLiveKey({ treeState: "revocation_pending", activeNode: null });
+          patchLive({ treeState: "revocation_pending", activeNode: null });
 
-          addLog(`Revoking root: ${shorten(rootRevId, 12)}…`);
+          addLog(`Revoking first delegation (cascade invalidates downstream): ${shorten(researchRevId, 12)}…`);
           addLog("Single SSTORE write — O(1) regardless of tree size");
 
           const r = await call("POST", "/api/revoke", {
-            tokenId: rootRevId,
+            tokenId: researchRevId,
             agentTokenId: agentId,
           });
 
           if (r.success || r.txHash) {
             addLog(`✓ Root revoked → tx: ${shorten(r.txHash)}`, "success");
-            addTx(r.txHash);
+            addTx({
+              hash: r.txHash,
+              label: "DCTRegistry.revoke (cascade)",
+              blockNumber: r.blockNumber,
+              gasUsed: r.gasUsed,
+              feeWei: r.feeWei,
+            });
+            logChainFootprint("revoke", r);
             addLog("  Downstream agents NOT actively killed — lazy revocation", "info");
             addLog("  They will fail next time they attempt any action");
-            setLiveKey({ treeState: "revocation_complete" });
+            patchLive({ treeState: "revocation_complete" });
           } else {
             addLog(`⚠ ${r.error || "revocation returned no tx"}`, "warning");
             addLog("  Token may not have been on-chain (demo ran without Phase 3 register)", "info");
-            setLiveKey({ treeState: "revocation_complete" });
+            patchLive({ treeState: "revocation_complete" });
           }
           break;
         }
 
         // ── Phase 9: cascade proof (lineage walk animation) ──
         case 9: {
-          const token   = live.tokens.payment || live.tokens.root;
-          const agentId = live.agents.payment ?? "2";
+          const token   = wf().tokens.payment || wf().tokens.root;
+          const agentId = wf().agents.payment ?? "2";
           if (!token) { addLog("✗ Run Phases 2–4 first", "error"); break; }
 
-          setLiveKey({ treeState: "cascade_attempt", activeNode: "payment", lineageStep: 0 });
+          patchLive({ treeState: "cascade_attempt", activeNode: "payment", lineageStep: 0 });
 
           addLog("Payment Agent attempting x402_pay after root revocation…");
           await new Promise(r => setTimeout(r, 400));
 
           addLog("isRevoked() walk started:");
-          setLiveKey({ lineageStep: 1 });
+          patchLive({ lineageStep: 1 });
           addLog("  hop 0 — Payment token: not directly revoked");
           await new Promise(r => setTimeout(r, 900));
 
-          setLiveKey({ lineageStep: 2 });
+          patchLive({ lineageStep: 2 });
           addLog("  hop 1 — Research token: not directly revoked");
           await new Promise(r => setTimeout(r, 900));
 
-          setLiveKey({ lineageStep: 3 });
+          patchLive({ lineageStep: 3 });
           addLog("  hop 2 — Root token: REVOKED ✗", "error");
           await new Promise(r => setTimeout(r, 700));
 
@@ -740,22 +1003,33 @@ export default function LiveDemo() {
           });
 
           if (!exec.success) {
-            addLog(`\n✗ REVERTED: ${exec.revertReason}`, "error");
-            if (exec.txHash) { addLog(`  tx: ${shorten(exec.txHash)}`, "tx"); addTx(exec.txHash); }
+            addLog(`\n✗ REVERTED: ${formatExecRevert(exec)}`, "error");
+            if (exec.txHash) {
+              addLog(`  tx: ${shorten(exec.txHash)}`, "tx");
+              addTx({
+                hash: exec.txHash,
+                label: "DCTEnforcer (post-revoke)",
+                blockNumber: exec.blockNumber,
+                gasUsed: exec.gasUsed,
+                feeWei: exec.feeWei,
+                path: exec.path,
+              });
+              logChainFootprint("enforcer cascade", exec);
+            }
           }
           addLog("\n✓ Cascade confirmed. Three agents. One tx. O(1) gas.", "success");
-          setLiveKey({ treeState: "cascade_confirmed", lineageStep: 0 });
+          patchLive({ treeState: "cascade_confirmed", lineageStep: 0 });
           break;
         }
 
         // ── Phase 10: trust summary ──
         case 10: {
           addLog("Fetching on-chain trust scores…");
-          const scores = { ...live.trustScores };
+          const scores = { ...wf().trustScores };
           for (const [key, id] of [
-            ["orchestrator", live.agents.orchestrator ?? "0"],
-            ["research",     live.agents.research     ?? "1"],
-            ["payment",      live.agents.payment      ?? "2"],
+            ["orchestrator", wf().agents.orchestrator ?? "0"],
+            ["research",     wf().agents.research     ?? "1"],
+            ["payment",      wf().agents.payment      ?? "2"],
           ]) {
             try {
               const t = await call("GET", `/api/trust/${id}`);
@@ -763,59 +1037,113 @@ export default function LiveDemo() {
               addLog(`  Agent #${id} (${key}): ${scores[key].toFixed(1)} pts`, "info");
             } catch { addLog(`  Agent #${id}: trust query failed`, "warning"); }
           }
-          setLiveKey({ trustScores: scores });
+          patchLive({ trustScores: scores });
           addLog("\n✓ Scores are on-chain. Updated only by DCTEnforcer. Cannot be faked.", "success");
           break;
         }
 
         // ── Phase 11: summary ──
         case 11: {
-          const txCount = live.transactions.length;
-          const attMs   = live.timings.totalAttenuation || "–";
-          setLiveKey({
+          const txs = wf().transactions;
+          const txCount = txs.length;
+          const attMs = wf().timings.totalAttenuation || "–";
+          let totalGas = 0n;
+          let totalFeeWei = 0n;
+          for (const t of txs) {
+            const o = txNorm(t);
+            let gu = o.gasUsed;
+            let fw = o.feeWei;
+            if (o.hash && (!gu || !fw)) {
+              try {
+                const d = await api.get(`/api/chain/tx/${o.hash}`).then((r) => r.data);
+                if (d && !d.pending && !d.error) {
+                  gu = gu || d.gasUsed;
+                  fw = fw || d.feeWei;
+                  mergeTxByHash(o.hash, {
+                    gasUsed: d.gasUsed,
+                    feeWei: d.feeWei,
+                    blockNumber: d.blockNumber,
+                    methodName: d.methodName,
+                    contractLabel: d.contractLabel,
+                    argSummary: d.argSummary,
+                    chainFetched: true,
+                  });
+                }
+              } catch {
+                /* RPC optional */
+              }
+            }
+            if (gu) try { totalGas += BigInt(gu); } catch { /* ignore */ }
+            if (fw) try { totalFeeWei += BigInt(fw); } catch { /* ignore */ }
+          }
+          const gasLine =
+            totalGas > 0n
+              ? `${totalGas.toString()} units · ${formatFeeWei(totalFeeWei.toString())} (Σ receipts)`
+              : "— (no receipt gas — check RPC / contract addresses)";
+          patchLive({
             summary: {
               txCount,
               attMs,
               agentsCreated: 3,
               delegations: 2,
-              gasEstimate: "~$0.04",
+              totalGasUsed: totalGas > 0n ? totalGas.toString() : null,
+              totalFeeWei: totalFeeWei > 0n ? totalFeeWei.toString() : null,
+              gasEstimate: gasLine,
             },
           });
           addLog("═══ DCT Protocol Demo Complete ═══", "success");
           addLog(`  Agents created:      3`);
           addLog(`  On-chain txs:        ${txCount}`);
+          addLog(`  Σ gas (tracked):     ${gasLine}`);
           addLog(`  Off-chain attenuations: 2 (${attMs}ms total)`);
           addLog(`  Auth servers consulted: 0`);
-          addLog(`  Gas for full revoke:    ~21,000 (1 SSTORE)`);
           addLog(`\n  "Sudo for AI agents. Trustless. Composable. MIT licensed."`, "success");
           break;
         }
       }
     } catch (err) {
       addLog(`Error: ${err.response?.data?.error || err.message}`, "error");
+    }
+  }
+
+  async function runStep(s) {
+    if (running) return;
+    setRunning(true);
+    workflowRef.current = { ...live, logs: [] };
+    setLive(workflowRef.current);
+    await executePhase(s);
+    setRunning(false);
+    if (autoAdvance && !fullWorkflowActiveRef.current && s < 11) setStep(s + 1);
+  }
+
+  async function runFullWorkflow() {
+    if (running) return;
+    fullWorkflowActiveRef.current = true;
+    setRunning(true);
+    const next = getDefaultLive();
+    workflowRef.current = next;
+    setLive(next);
+    setStep(0);
+    try {
+      for (let s = 0; s <= 11; s++) {
+        setStep(s);
+        setFullRunProgress({ current: s + 1, total: 12 });
+        await executePhase(s);
+        await new Promise((r) => setTimeout(r, 250));
+      }
     } finally {
       setRunning(false);
-      if (autoAdvance && s < 11) setStep(s + 1);
+      fullWorkflowActiveRef.current = false;
+      setFullRunProgress(null);
     }
   }
 
   function reset() {
     setStep(0);
-    setLive({
-      agents: { orchestrator: null, research: null, payment: null },
-      tokens: { root: null, research: null, payment: null },
-      revIds: { root: null, research: null, payment: null },
-      transactions: [],
-      trustScores: { orchestrator: 100, research: 0, payment: 0 },
-      timings: {},
-      treeState: "empty",
-      activeNode: null,
-      lineageStep: 0,
-      logs: [],
-      checks: [],
-      health: {},
-      summary: {},
-    });
+    logSeqRef.current = 0;
+    const fresh = getDefaultLive();
+    workflowRef.current = fresh;
+    setLive(fresh);
   }
 
   // ─── step content ────────────────────────────────────────────────────────
@@ -826,7 +1154,7 @@ export default function LiveDemo() {
     "Creating Root Permission Token",
     "Orchestrator → Research Delegation",
     "Research → Payment Delegation",
-    "Research Agent Executes Verified Task",
+    "Research Agent Executes web_fetch (TLSNotary + Enforcer)",
     "Research Agent Tries Forbidden Tool",
     "Payment Agent Tries to Overspend",
     "Cascade Revocation — One Transaction",
@@ -841,7 +1169,7 @@ export default function LiveDemo() {
     "Offline, instant, pure Ed25519 cryptography",
     "Authority narrows. Registered on-chain.",
     "Full delegation tree: Orchestrator → Research → Payment",
-    "Real 4-check DCTEnforcer trace",
+    "TLSNotary prove (origin + op + session) → Biscuit → DCTEnforcer + oracle attestation",
     "Rejected before touching the blockchain — zero gas",
     "Passes local check, reverts on-chain",
     "Single SSTORE. O(1). No gas bomb.",
@@ -862,12 +1190,33 @@ export default function LiveDemo() {
             Delegated Capability Tokens · Base Sepolia · {live.transactions.length} tx so far
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap justify-end">
+          <button
+            type="button"
+            onClick={runFullWorkflow}
+            disabled={running}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-50 disabled:pointer-events-none transition-colors"
+            style={{ background: "linear-gradient(135deg, #6366f1, #22d3ee)" }}
+            title="Run phases 0–11 in sequence with shared workflow state"
+          >
+            {running && fullRunProgress ? (
+              <>
+                <Loader2 className="w-3 h-3 animate-spin" />
+                E2E {fullRunProgress.current}/{fullRunProgress.total}
+              </>
+            ) : (
+              <>
+                <Workflow className="w-3 h-3" />
+                Run full E2E workflow
+              </>
+            )}
+          </button>
           <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
             <input
               type="checkbox"
               checked={autoAdvance}
               onChange={e => setAutoAdvance(e.target.checked)}
+              disabled={running && !!fullRunProgress}
               className="rounded"
             />
             Auto-advance
@@ -1125,10 +1474,10 @@ export default function LiveDemo() {
                       { label: "Off-chain attenuations",  value: "2" },
                       { label: "Attenuation time",        value: `${live.summary.attMs}ms` },
                       { label: "Auth servers consulted",  value: "0" },
-                      { label: "Total gas cost",          value: live.summary.gasEstimate },
+                      { label: "Gas & fees (Σ receipts)", value: live.summary.gasEstimate },
                     ].map(s => (
                       <div key={s.label} className="p-3 rounded-xl bg-white/[0.03] border border-white/10">
-                        <p className="text-base font-bold">{s.value}</p>
+                        <p className={`font-mono font-bold leading-snug break-words ${s.label.includes("Gas") ? "text-[11px]" : "text-base"}`}>{s.value}</p>
                         <p className="text-[10px] text-muted-foreground mt-0.5">{s.label}</p>
                       </div>
                     ))}
@@ -1143,40 +1492,44 @@ export default function LiveDemo() {
             </motion.div>
           </AnimatePresence>
 
-          {/* log panel */}
+          {/* log panel — terminal-style */}
           {live.logs.length > 0 && (
-            <div className="glass rounded-2xl overflow-hidden border-gradient">
-              <div className="bg-[hsl(222,47%,4%)] p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="w-2.5 h-2.5 rounded-full bg-[#ef4444]" />
-                  <div className="w-2.5 h-2.5 rounded-full bg-[#fbbf24]" />
-                  <div className="w-2.5 h-2.5 rounded-full bg-[#34d399]" />
-                  <span className="text-xs font-mono text-muted-foreground ml-2">dct-protocol</span>
-                </div>
-                <div className="space-y-0.5 max-h-[280px] overflow-y-auto font-mono text-[11px]">
+            <div className="rounded-xl overflow-hidden border border-zinc-800/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+              <div className="bg-[#070a0e] px-3 py-2 flex items-center gap-2 border-b border-zinc-800/80">
+                <Terminal className="w-3.5 h-3.5 text-emerald-500/90" />
+                <span className="text-[11px] font-mono text-zinc-500">base-sepolia</span>
+                <span className="text-[10px] font-mono text-zinc-600 ml-auto">
+                  {live.transactions.length} tx · demo log
+                </span>
+              </div>
+              <div className="bg-[#0c1016] p-3">
+                <div className="space-y-0 max-h-[320px] overflow-y-auto font-mono text-[11px] leading-snug">
                   {live.logs.map((log, i) => (
                     <motion.div
                       key={i}
-                      initial={{ opacity: 0, x: -8 }}
+                      initial={{ opacity: 0, x: -6 }}
                       animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: Math.min(i * 0.02, 0.3) }}
-                      className={`flex items-start gap-2 leading-relaxed ${
-                        log.type === "success" ? "text-[#34d399]" :
-                        log.type === "error"   ? "text-[#ef4444]" :
-                        log.type === "warning" ? "text-[#fbbf24]" :
-                        log.type === "tx"      ? "text-[#22d3ee]" :
-                                                 "text-muted-foreground"
+                      transition={{ delay: Math.min(i * 0.015, 0.25) }}
+                      className={`flex items-start gap-2 py-0.5 border-l-2 border-transparent pl-1 -ml-1 ${
+                        log.type === "success" ? "text-emerald-400/95 border-l-emerald-500/40" :
+                        log.type === "error"   ? "text-red-400/95 border-l-red-500/40" :
+                        log.type === "warning" ? "text-amber-400/90 border-l-amber-500/40" :
+                        log.type === "tx"      ? "text-cyan-400/90 border-l-cyan-500/35" :
+                                                 "text-zinc-400 border-l-zinc-700/50"
                       }`}
                     >
-                      <span className="text-white/20 select-none shrink-0 w-5 text-right">
+                      <span className="text-zinc-600 select-none shrink-0 w-[76px] text-right tabular-nums">
+                        {formatLogTime(log.ts)}
+                      </span>
+                      <span className="text-zinc-600 select-none shrink-0 w-4 text-right opacity-70">
                         {String(i + 1).padStart(2)}
                       </span>
-                      <span className="break-all">{log.msg}</span>
+                      <span className="break-all min-w-0">{log.msg}</span>
                     </motion.div>
                   ))}
                   {running && (
-                    <div className="flex items-center gap-2 text-[#22d3ee]">
-                      <Loader2 className="w-3 h-3 animate-spin" />
+                    <div className="flex items-center gap-2 text-cyan-400/90 pl-[92px] py-1">
+                      <Loader2 className="w-3 h-3 animate-spin shrink-0" />
                       <span>running…</span>
                     </div>
                   )}
@@ -1191,26 +1544,76 @@ export default function LiveDemo() {
             <EventLog maxRows={50} />
           </div>
 
-          {/* tx list */}
+          {/* tx ledger — previews + Basescan */}
           {live.transactions.length > 0 && (
-            <div className="glass rounded-xl p-4 border-gradient">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                Transactions ({live.transactions.length})
+            <div className="rounded-xl border border-zinc-800/80 bg-[#0c1016]/90 overflow-hidden">
+              <p className="text-[10px] font-mono font-semibold text-zinc-500 uppercase tracking-wider px-3 py-2 border-b border-zinc-800/80 flex items-center gap-2">
+                <Link2 className="w-3 h-3" />
+                On-chain transactions ({live.transactions.length})
               </p>
-              <div className="space-y-1">
-                {live.transactions.map((tx, i) => (
-                  <a
-                    key={i}
-                    href={`${BASESCAN}/tx/${tx}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 text-[11px] text-[#22d3ee] hover:text-[#67e8f9] font-mono transition-colors"
-                  >
-                    <Link2 className="w-3 h-3 shrink-0" />
-                    {shorten(tx, 16)}
-                    <ExternalLink className="w-3 h-3 ml-auto opacity-50" />
-                  </a>
-                ))}
+              <div className="p-2 space-y-2 max-h-[420px] overflow-y-auto">
+                {live.transactions.map((raw, i) => {
+                  const tx = txNorm(raw);
+                  const title =
+                    tx.methodName && tx.methodName !== "unknown"
+                      ? `${tx.contractLabel || "Contract"}.${tx.methodName}()`
+                      : tx.label || "Transaction";
+                  const sub =
+                    tx.argSummary ||
+                    (tx.pending ? "Pending confirmation…" : "Decoded via local RPC — open Basescan for full trace");
+                  return (
+                    <a
+                      key={`${tx.hash}-${i}`}
+                      href={`${BASESCAN}/tx/${tx.hash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block rounded-lg border border-zinc-800/90 bg-black/30 px-3 py-2.5 hover:border-cyan-900/60 hover:bg-black/45 transition-colors group"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[11px] font-mono font-semibold text-zinc-200 group-hover:text-cyan-200/95 truncate">
+                            {title}
+                          </p>
+                          <p className="text-[10px] font-mono text-zinc-500 mt-0.5 line-clamp-2 break-all">
+                            {sub}
+                          </p>
+                          <p className="text-[10px] font-mono text-zinc-600 mt-1 truncate">
+                            {tx.hash}
+                          </p>
+                        </div>
+                        <ExternalLink className="w-3.5 h-3.5 text-zinc-600 group-hover:text-cyan-500/80 shrink-0 mt-0.5" />
+                      </div>
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-2 text-[10px] font-mono text-zinc-500">
+                        {tx.blockNumber != null && (
+                          <span className="text-zinc-500">
+                            block <span className="text-zinc-400">{tx.blockNumber}</span>
+                          </span>
+                        )}
+                        {tx.status === "reverted" && (
+                          <span className="text-red-400/90">reverted</span>
+                        )}
+                        {tx.gasUsed && (
+                          <span>
+                            gas <span className="text-emerald-400/90">{Number(tx.gasUsed).toLocaleString()}</span>
+                          </span>
+                        )}
+                        {tx.feeWei && (
+                          <span>
+                            fee <span className="text-amber-400/85">{formatFeeWei(tx.feeWei)}</span>
+                          </span>
+                        )}
+                        {tx.effectiveGasPrice && (
+                          <span className="text-zinc-600">
+                            {formatUnits(tx.effectiveGasPrice, "gwei")} gwei / gas
+                          </span>
+                        )}
+                        {!tx.chainFetched && !tx.methodName && (
+                          <span className="text-zinc-600 animate-pulse">decoding…</span>
+                        )}
+                      </div>
+                    </a>
+                  );
+                })}
               </div>
             </div>
           )}

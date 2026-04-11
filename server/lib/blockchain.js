@@ -7,6 +7,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { setDCTContext } from "@shaurya2k06/dctsdk";
+import { resolveHttpRpcUrl, missingRpcHelp } from "./rpc-url.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SERVER_ROOT = path.join(__dirname, "..");
@@ -17,18 +18,11 @@ const contracts = {};
 
 export function getProvider() {
   if (!provider) {
-    const rpcUrl = process.env.RPC_URL?.trim();
-    if (rpcUrl) {
-      provider = new ethers.JsonRpcProvider(rpcUrl);
-    } else {
-      const alchemyKey = process.env.ALCHEMY_API_KEY;
-      if (!alchemyKey) {
-        throw new Error("Set RPC_URL or ALCHEMY_API_KEY for JSON-RPC access");
-      }
-      provider = new ethers.JsonRpcProvider(
-        `https://base-sepolia.g.alchemy.com/v2/${alchemyKey}`
-      );
+    const rpcUrl = resolveHttpRpcUrl();
+    if (!rpcUrl) {
+      throw new Error(missingRpcHelp());
     }
+    provider = new ethers.JsonRpcProvider(rpcUrl);
   }
   return provider;
 }
@@ -107,12 +101,19 @@ function resolveContractAddress(contractName) {
   return ethers.getAddress(raw);
 }
 
+/** Signer for txs; without PRIVATE_KEY use read-only provider (view calls only). */
+function getContractRunner() {
+  const pk = process.env.PRIVATE_KEY?.trim();
+  if (pk) return getSigner();
+  return getProvider();
+}
+
 function getContract(contractName) {
   if (!contracts[contractName]) {
     const j = loadABI(contractName);
     const abi = j.abi ?? j;
     const address = resolveContractAddress(contractName);
-    contracts[contractName] = new ethers.Contract(address, abi, getSigner());
+    contracts[contractName] = new ethers.Contract(address, abi, getContractRunner());
   }
   return contracts[contractName];
 }
@@ -131,11 +132,12 @@ export function getERC8004() {
 }
 
 export function wireDCTSdk() {
+  const pk = process.env.PRIVATE_KEY?.trim();
   setDCTContext({
     registry: getRegistry(),
     enforcer: getEnforcer(),
     erc8004: getERC8004(),
-    signer: getSigner(),
+    signer: pk ? getSigner() : null,
   });
 }
 

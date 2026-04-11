@@ -80,6 +80,8 @@ Environment variables for **local Anvil** (see `server/.env.example`):
 | `PRIVATE_KEY` | Anvil account #0 private key |
 | `ADDRESSES_FILE` | `addresses.local-anvil.json` |
 
+For **Base Sepolia** (testnet), prefer **`INFURA_PROJECT_ID`** in `server/.env` (or a full Infura `RPC_URL`) instead of legacy Alchemy — wider `eth_getLogs` ranges for `/api/agents`. See `server/.env.example`.
+
 ## TLSNotary — what is `TLSN_PROVER_URL`?
 
 - **`TLSN_PROVER_URL`** is the base URL of a small HTTP service that implements **`POST /prove`** (see `server/lib/tlsn/prover.mjs`). The main API server calls it when generating TLS proofs for `POST /api/tlsn/prove` and `POST /api/delegation/execute` (when a URL is supplied).

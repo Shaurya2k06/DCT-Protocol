@@ -66,4 +66,12 @@ export const validateAction = (data) =>
 export const healthCheck = () => api.get("/").then((r) => r.data);
 export const getConfig = () => api.get("/api/config").then((r) => r.data);
 
+// ── Operator layer (workflow snapshot; no secrets) ──
+export const getLayerSnapshot = () =>
+  api.get("/api/layer/snapshot").then((r) => r.data);
+
+/** @param {{ version?: number, openClaw: { baseUrl: string, authMode: string }, workflow: { nodes: unknown[], edges: unknown[] } }} body */
+export const saveLayerSnapshot = (body) =>
+  api.post("/api/layer/snapshot", body).then((r) => r.data);
+
 export default api;

@@ -18,6 +18,7 @@ import { createSmartAccountClient } from "permissionless";
 import { toSimpleSmartAccount } from "permissionless/accounts";
 import { getPimlicoBundlerRpcUrl } from "../pimlico.js";
 import { loadAddresses } from "../blockchain.js";
+import { resolveHttpRpcUrl, missingRpcHelp } from "../rpc-url.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -33,11 +34,9 @@ function loadEnforcerAbi() {
 }
 
 function rpcUrl() {
-  const u = process.env.RPC_URL?.trim();
-  if (u) return u;
-  const k = process.env.ALCHEMY_API_KEY?.trim();
-  if (!k) throw new Error("Set RPC_URL or ALCHEMY_API_KEY");
-  return `https://base-sepolia.g.alchemy.com/v2/${k}`;
+  const u = resolveHttpRpcUrl();
+  if (!u) throw new Error(missingRpcHelp());
+  return u;
 }
 
 /**

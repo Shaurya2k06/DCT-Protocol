@@ -26,12 +26,140 @@ import {
   getRegistry,
   getEnforcer,
   getSigner,
+  getProvider,
+  getERC8004,
   loadAddresses,
   ethers,
 } from "../lib/blockchain.js";
 import { sendValidateActionWithScopeUserOp } from "../lib/aa/pimlico-execute.mjs";
 
 const router = express.Router();
+
+/** Ensure JSON never sends revertReason as a bare object (avoids "[object Object]" in UIs). */
+function stringifyRevertReason(value) {
+  if (value == null || value === "") return null;
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (typeof value === "object") {
+    if (typeof value.reason === "string") return value.reason;
+    if (typeof value.shortMessage === "string") return value.shortMessage;
+    if (typeof value.message === "string" && !String(value.message).startsWith("[object ")) {
+      return value.message;
+    }
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+  return String(value);
+}
+
+function summarizeParsedArgs(parsed) {
+  if (!parsed?.fragment?.inputs) return "";
+  const parts = [];
+  const { inputs } = parsed.fragment;
+  const { args } = parsed;
+  for (let i = 0; i < Math.min(inputs.length, 10); i++) {
+    const inp = inputs[i];
+    let v = args[i];
+    if (v == null) v = "";
+    else if (typeof v === "bigint") v = v.toString();
+    else if (typeof v === "string" && v.length > 48) v = `${v.slice(0, 14)}…${v.slice(-10)}`;
+    else if (typeof v === "object" && v != null) {
+      try {
+        v = JSON.stringify(v);
+        if (v.length > 80) v = `${v.slice(0, 78)}…`;
+      } catch {
+        v = String(v);
+      }
+    }
+    parts.push(`${inp.name || `arg${i}`}=${v}`);
+  }
+  return parts.join(" · ");
+}
+
+/**
+ * GET /api/chain/tx/:hash
+ * RPC-backed tx + receipt decode (method + args) for DCT contracts — no Basescan API key.
+ */
+router.get("/chain/tx/:hash", async (req, res) => {
+  try {
+    const { hash } = req.params;
+    if (!/^0x[a-fA-F0-9]{64}$/.test(hash)) {
+      return res.status(400).json({ error: "invalid tx hash" });
+    }
+    const provider = getProvider();
+    const tx = await provider.getTransaction(hash);
+    if (!tx) return res.status(404).json({ error: "transaction not found" });
+    const receipt = await provider.getTransactionReceipt(hash);
+    if (!receipt) {
+      return res.json({
+        hash,
+        pending: true,
+        from: tx.from,
+        to: tx.to,
+      });
+    }
+
+    const gasUsed = receipt.gasUsed.toString();
+    const feeWei = receipt.fee.toString();
+    const status = receipt.status === 1 ? "success" : "reverted";
+
+    let methodName = "unknown";
+    let contractLabel = receipt.to ? "Contract" : "contract creation";
+    let argSummary = "";
+
+    const pairs = [
+      [getRegistry(), "DCTRegistry"],
+      [getEnforcer(), "DCTEnforcer"],
+      [getERC8004(), "ERC-8004 Identity"],
+    ];
+    const toLower = receipt.to?.toLowerCase();
+    for (const [c, label] of pairs) {
+      let addr;
+      try {
+        addr = (await c.getAddress()).toLowerCase();
+      } catch {
+        continue;
+      }
+      if (toLower && addr === toLower) {
+        contractLabel = label;
+        try {
+          const parsed = c.interface.parseTransaction({
+            data: tx.data,
+            value: tx.value ?? 0n,
+          });
+          if (parsed) {
+            methodName = parsed.name;
+            argSummary = summarizeParsedArgs(parsed);
+          }
+        } catch {
+          methodName = "unknown";
+        }
+        break;
+      }
+    }
+
+    const egp = receipt.gasPrice;
+    res.json({
+      hash: receipt.hash,
+      blockNumber: Number(receipt.blockNumber),
+      status,
+      from: receipt.from,
+      to: receipt.to,
+      gasUsed,
+      feeWei,
+      effectiveGasPrice: egp != null ? egp.toString() : null,
+      methodName,
+      contractLabel,
+      argSummary,
+    });
+  } catch (e) {
+    console.error("chain/tx:", e);
+    res.status(500).json({ error: e.message });
+  }
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Health checks
@@ -203,7 +331,9 @@ router.post("/delegate", async (req, res) => {
       return res.json({
         txHash: result.txHash,
         blockNumber: result.blockNumber,
-        gasUsed: null,
+        gasUsed: result.gasUsed ?? null,
+        feeWei: result.feeWei ?? null,
+        effectiveGasPrice: result.effectiveGasPrice ?? null,
         childRevocationId: result.childRevocationId,
         childTokenBytes: result.childToken,
         actualSpendLimit: result.actualSpendLimit,
@@ -349,15 +479,18 @@ router.post("/execute/submit", async (req, res) => {
       tlsAttestation: tlsnProof || "0x",
     });
 
+    const rawReason = result.success
+      ? null
+      : (result.error ?? result.message ?? "reverted");
     res.json({
       txHash:       result.txHash || null,
       blockNumber:  result.blockNumber || null,
       success:      result.success,
       reverted:     !result.success,
-      revertReason: result.success
-        ? null
-        : (result.error || result.message || "reverted"),
-      gasUsed:      null,
+      revertReason: result.success ? null : stringifyRevertReason(rawReason),
+      gasUsed:      result.gasUsed ?? null,
+      feeWei:       result.feeWei ?? null,
+      effectiveGasPrice: result.effectiveGasPrice ?? null,
       path:         "eoa",
     });
   } catch (e) {
@@ -411,6 +544,9 @@ router.post("/revoke", async (req, res) => {
       blockNumber: result.blockNumber,
       success: result.success,
       message: result.message,
+      gasUsed: result.gasUsed ?? null,
+      feeWei: result.feeWei ?? null,
+      effectiveGasPrice: result.effectiveGasPrice ?? null,
     });
   } catch (e) {
     console.error("revoke:", e.message);

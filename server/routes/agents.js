@@ -125,6 +125,9 @@ router.post("/register", async (req, res) => {
       agentId,
       txHash: receipt.hash,
       blockNumber: receipt.blockNumber,
+      gasUsed: receipt.gasUsed?.toString(),
+      feeWei: receipt.fee?.toString(),
+      effectiveGasPrice: receipt.gasPrice?.toString(),
     });
   } catch (error) {
     console.error("Error registering agent:", error);

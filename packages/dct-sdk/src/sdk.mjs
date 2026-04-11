@@ -20,6 +20,36 @@ import {
 import { ethers } from "ethers";
 import { getRegistry, getEnforcer, getSigner } from "./context.mjs";
 
+function requireServerWallet() {
+  const s = getSigner();
+  if (!s) {
+    throw new Error(
+      "Server wallet not configured. Set PRIVATE_KEY in server/.env (Base Sepolia test key with ETH for gas)."
+    );
+  }
+  return s;
+}
+
+/** Gas + fee metadata from an ethers v6 TransactionReceipt (for API / demo UI). */
+function receiptEconomics(receipt) {
+  if (!receipt) {
+    return {
+      gasUsed: null,
+      feeWei: null,
+      effectiveGasPrice: null,
+    };
+  }
+  const gasUsed = receipt.gasUsed ?? 0n;
+  const fee = receipt.fee ?? 0n;
+  const egp = receipt.gasPrice ?? receipt.effectiveGasPrice ?? null;
+  return {
+    gasUsed: gasUsed.toString(),
+    feeWei: fee.toString(),
+    effectiveGasPrice: egp != null ? egp.toString() : null,
+    blockNumber: receipt.blockNumber,
+  };
+}
+
 // ── Root Key Management ──
 // In production: HSM-backed. For hackathon: in-memory Ed25519 keys.
 let rootKeyPair = null;
@@ -48,6 +78,9 @@ export function getRootPrivateKey() {
   if (!rootPrivateKey) initRootKey();
   return rootPrivateKey;
 }
+
+/** biscuit-wasm `authorize()` defaults to ~20ms max Datalog time — too low for Node WASM; raise for authorize(). */
+const BISCUIT_RUN_LIMITS = { max_time_micro: 2_000_000 };
 
 // ── Token Storage ──
 // Maps serialized token base64 → Biscuit instance for quick lookups.
@@ -94,6 +127,10 @@ export function mintRootToken({
   code += `spend_limit_usdc(${spendLimitUsdc});\n`;
   code += `max_depth(${maxDepth});\n`;
   code += `expires_at(${expiry});\n`;
+
+  // Align with authorizeToken facts: time window + per-action spend (see attenuateToken)
+  code += `check if time($t), $t < ${expiry};\n`;
+  code += `check if spend_usdc($s), $s <= ${spendLimitUsdc};\n`;
 
   // Scope commitment — keccak256 of the scope struct, mirrors on-chain
   const scopeHash = ethers.keccak256(
@@ -250,11 +287,21 @@ export function authorizeToken(tokenB64, toolName, spendAmount, agentTokenId) {
     const builder = new AuthorizerBuilder();
     builder.addCode(authCode);
     const auth = builder.buildAuthenticated(token);
-    auth.authorize();
+    auth.authorizeWithLimits(BISCUIT_RUN_LIMITS);
 
     return { authorized: true };
   } catch (error) {
-    return { authorized: false, error: error.toString() };
+    let msg = "authorization failed";
+    if (error instanceof Error) msg = error.message;
+    else if (typeof error === "string") msg = error;
+    else {
+      try {
+        msg = JSON.stringify(error);
+      } catch {
+        msg = Object.prototype.toString.call(error);
+      }
+    }
+    return { authorized: false, error: msg };
   }
 }
 
@@ -281,6 +328,7 @@ export async function delegate({
   childTools,
   childSpendLimit,
 }) {
+  requireServerWallet();
   const registry = getRegistry();
   const parentMeta = tokenStore.get(parentTokenB64);
   const parentSpendCeiling = BigInt(parentMeta?.spendLimitUsdc ?? 50_000_000);
@@ -331,8 +379,8 @@ export async function delegate({
     parentRevocationId: parentRevId,
     actualSpendLimit: actualSpend.toString(),
     txHash: receipt.hash,
-    blockNumber: receipt.blockNumber,
     blocks: getTokenBlocks(childToken),
+    ...receiptEconomics(receipt),
   };
 }
 
@@ -366,10 +414,20 @@ export async function execute({
     String(agentTokenId)
   );
   if (!authResult.authorized) {
+    const err =
+      typeof authResult.error === "string"
+        ? authResult.error
+        : (() => {
+            try {
+              return JSON.stringify(authResult.error);
+            } catch {
+              return "Biscuit authorization failed";
+            }
+          })();
     return {
       success: false,
       stage: "off-chain",
-      error: authResult.error,
+      error: err,
       message: "Biscuit Datalog check failed — action blocked before tx submission (zero gas wasted)",
     };
   }
@@ -381,7 +439,7 @@ export async function execute({
   }
 
   const enforcer = getEnforcer();
-  const signer = getSigner();
+  const signer = requireServerWallet();
   const toolHash = ethers.keccak256(ethers.toUtf8Bytes(toolName));
 
   const allowedTools = (meta.allowedTools || []).map((t) =>
@@ -428,10 +486,10 @@ export async function execute({
     success: !!validatedEvent,
     stage: "on-chain",
     txHash: receipt.hash,
-    blockNumber: receipt.blockNumber,
     message: validatedEvent
       ? "Enforcer validated: revocation, identity, scope commitment, optional TLS"
       : "Enforcer rejected action",
+    ...receiptEconomics(receipt),
   };
 }
 
@@ -448,7 +506,7 @@ export async function execute({
  */
 export async function revoke(revocationId, agentTokenId) {
   const registry = getRegistry();
-  const signer = getSigner();
+  const signer = requireServerWallet();
   const nonce = await signer.provider.getTransactionCount(await signer.getAddress(), "pending");
   const tx = await registry.revoke(revocationId, BigInt(agentTokenId), { nonce });
   const receipt = await tx.wait();
@@ -456,8 +514,8 @@ export async function revoke(revocationId, agentTokenId) {
   return {
     success: true,
     txHash: receipt.hash,
-    blockNumber: receipt.blockNumber,
     message: "Token revoked — O(1) write. Children fail isRevoked() lazily at execution time.",
+    ...receiptEconomics(receipt),
   };
 }
 

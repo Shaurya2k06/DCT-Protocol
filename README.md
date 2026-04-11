@@ -23,7 +23,9 @@ npm install --prefix client
 
 # 2 — Copy and fill env
 cp server/.env.example server/.env
-# Required: PRIVATE_KEY, ALCHEMY_API_KEY (or RPC_URL)
+cp client/.env.example client/.env
+# Server: INFURA_PROJECT_ID or RPC_URL (see server/.env.example), PRIVATE_KEY for on-chain writes
+# Client: VITE_API_URL → your API origin (default localhost:3000)
 # Optional: PIMLICO_API_KEY, DATABASE_URL, TLSN_*
 
 # 3 — Start server (WASM module support required)
@@ -57,20 +59,34 @@ cd server && npm run tlsn-prover
 
 ---
 
+## Where environment variables live
+
+| File | Purpose |
+|------|---------|
+| `server/.env` | Chain RPC (Infura recommended: `INFURA_PROJECT_ID` or full `RPC_URL`), `PRIVATE_KEY`, DB, TLSN, Pimlico. **Gitignored.** |
+| `client/.env` | `VITE_API_URL` (API origin), `VITE_BASESCAN_URL`. **Gitignored.** |
+| `server/.env.example` / `client/.env.example` | Safe templates — copy these; never commit real secrets. |
+
 ## Environment checklist
 
 ```
 # server/.env (never commit)
 PRIVATE_KEY=<deployer / signer EOA private key>
-ALCHEMY_API_KEY=<or set RPC_URL directly>
+INFURA_PROJECT_ID=<Infura dashboard project id>   # or set RPC_URL=https://base-sepolia.infura.io/v3/...
+# Legacy: ALCHEMY_API_KEY=<...>
 PIMLICO_API_KEY=<for ERC-4337 sponsored gas; omit to use EOA fallback>
 DATABASE_URL=<Neon / Postgres connection string; omit to disable audit log>
 TLSN_NOTARY_URL=http://127.0.0.1:7047
 TLSN_PROVER_URL=http://127.0.0.1:8090
 ```
 
+```
+# client/.env
+VITE_API_URL=http://localhost:3000
+```
+
 Rotate any key that was ever logged, printed, or exposed in chat.  
-`server/.env` is in `.gitignore` — confirm before every push with `git status`.
+Confirm before every push with `git status` — `.env` files must not be committed.
 
 ---
 
@@ -84,7 +100,7 @@ const es = new EventSource('http://localhost:3000/api/events');
 es.onmessage = (e) => console.log(JSON.parse(e.data));
 ```
 
-Uses a WebSocket provider when `WS_RPC_URL` or `ALCHEMY_API_KEY` is set;  
+Uses a WebSocket provider when `WS_RPC_URL` is set, or when Infura / Alchemy env vars supply a derived WSS URL;  
 falls back to HTTP polling every 6 s otherwise.
 
 The **Live Demo** (`/live-demo`) shows an embedded event log fed from this endpoint.
