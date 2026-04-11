@@ -17,7 +17,7 @@ const DEMO_STEPS = [
     title: "Setup",
     subtitle: "Register agents & mint root Biscuit token",
     icon: Users,
-    color: "from-[hsl(199,89%,48%)] to-[hsl(187,92%,69%)]",
+    color: "bg-nb-accent-2",
     description:
       "Three agents registered on ERC-8004. Root creates a real Eclipse Biscuit authority token — Ed25519 signed, Datalog-encoded scope with tools, spend limits, and depth constraints.",
   },
@@ -26,7 +26,7 @@ const DEMO_STEPS = [
     title: "Delegation Cascade",
     subtitle: "Attenuate & delegate A → B → C (real Biscuit + on-chain)",
     icon: GitBranch,
-    color: "from-[hsl(265,89%,65%)] to-[hsl(199,89%,48%)]",
+    color: "bg-purple-500",
     description:
       "Each delegation: (1) trust-gated spend via maxGrantableSpend(), (2) Biscuit attenuation offline — zero network calls, pure Ed25519 cryptography, (3) registerDelegation() on-chain linking revocation IDs into the lineage tree.",
   },
@@ -35,7 +35,7 @@ const DEMO_STEPS = [
     title: "Successful Execution",
     subtitle: "Off-chain Datalog + on-chain DCTEnforcer",
     icon: ShieldCheck,
-    color: "from-[hsl(142,76%,36%)] to-[hsl(160,84%,39%)]",
+    color: "bg-nb-ok",
     description:
       "Two-layer enforcement: (1) Biscuit Datalog authorizer checks all facts, rules, and checks off-chain, (2) DCTEnforcer validates on-chain: isRevoked() lineage walk, ownerOf() identity, scope commitment, TLSNotary attestation. Trust score increments.",
   },
@@ -44,7 +44,7 @@ const DEMO_STEPS = [
     title: "Scope Enforcement",
     subtitle: "Biscuit Datalog rejects unauthorized tool",
     icon: XCircle,
-    color: "from-[hsl(38,92%,50%)] to-[hsl(30,80%,55%)]",
+    color: "bg-nb-warn",
     description:
       "Agent C attempts a tool outside its attenuated Biscuit scope. The Datalog check fails OFF-CHAIN before any transaction is submitted — zero gas wasted. Scope widening is cryptographically impossible in Biscuit.",
   },
@@ -53,7 +53,7 @@ const DEMO_STEPS = [
     title: "Cascade Revocation",
     subtitle: "Single O(1) write kills entire tree",
     icon: ShieldOff,
-    color: "from-[hsl(0,72%,51%)] to-[hsl(340,75%,55%)]",
+    color: "bg-nb-error",
     description:
       "Root calls revoke() — one SSTORE, O(1) gas. Agent C re-attempts: isRevoked() walks the lineage, finds the revoked ancestor flag. The entire delegation tree is dead from a single on-chain write. No recursion. No gas bomb.",
   },
@@ -399,12 +399,12 @@ export default function Demo() {
       />
 
       {/* Progress Bar */}
-      <div className="glass rounded-2xl p-6 border-gradient">
+      <div className="nb-card">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold">Demo Progress</h3>
+          <h3 className="text-sm font-display font-bold text-nb-ink">Demo Progress</h3>
           <button
             onClick={resetDemo}
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            className="flex items-center gap-1 text-xs font-display font-semibold text-nb-ink/60 hover:text-nb-ink transition-colors"
           >
             <RotateCcw className="w-3 h-3" />
             Reset
@@ -421,14 +421,14 @@ export default function Demo() {
               <div key={step.id} className="flex items-center flex-1">
                 <button
                   onClick={() => setCurrentStep(i)}
-                  className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all shrink-0 ${
+                  className={`w-8 h-8 rounded-full border-2 border-nb-ink flex items-center justify-center text-xs font-display font-bold transition-all shrink-0 ${
                     isDone
-                      ? "bg-[hsl(142,76%,36%)] text-white"
+                      ? "bg-nb-ok text-white shadow-nb-sm"
                       : isError
-                      ? "bg-[hsl(0,72%,51%)] text-white"
+                      ? "bg-nb-error text-white shadow-nb-sm"
                       : isActive
-                      ? "bg-[hsl(199,89%,48%)] text-white glow-blue-strong"
-                      : "bg-white/10 text-muted-foreground"
+                      ? "bg-nb-accent-2 text-white shadow-nb-sm -translate-y-0.5"
+                      : "bg-nb-bg text-nb-ink/50"
                   }`}
                 >
                   {isDone ? (
@@ -441,8 +441,8 @@ export default function Demo() {
                 </button>
                 {i < DEMO_STEPS.length - 1 && (
                   <div
-                    className={`flex-1 h-0.5 mx-1 rounded-full transition-colors ${
-                      isDone ? "bg-[hsl(142,76%,36%)]" : "bg-white/10"
+                    className={`flex-1 h-1 mx-1 border-t-2 border-dashed transition-colors ${
+                      isDone ? "border-nb-ok" : "border-nb-ink/20"
                     }`}
                   />
                 )}
@@ -460,13 +460,13 @@ export default function Demo() {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -20 }}
           transition={{ duration: 0.3 }}
-          className="glass rounded-2xl overflow-hidden border-gradient"
+          className="nb-card overflow-hidden"
         >
           {/* Step Header */}
-          <div className="p-6 border-b border-white/10">
+          <div className="p-6 border-b-2 border-nb-ink -m-5 mb-0">
             <div className="flex items-center gap-4">
               <div
-                className={`w-14 h-14 rounded-xl bg-gradient-to-br ${DEMO_STEPS[currentStep].color} flex items-center justify-center`}
+                className={`w-14 h-14 rounded-nb border-2 border-nb-ink ${DEMO_STEPS[currentStep].color} flex items-center justify-center shadow-nb-sm`}
               >
                 {(() => {
                   const Icon = DEMO_STEPS[currentStep].icon;
@@ -475,24 +475,24 @@ export default function Demo() {
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-mono text-muted-foreground">
+                  <span className="nb-pill text-[10px]">
                     {DEMO_STEPS[currentStep].id}/5
                   </span>
-                  <h2 className="text-xl font-bold">{DEMO_STEPS[currentStep].title}</h2>
+                  <h2 className="text-xl font-display font-bold text-nb-ink">{DEMO_STEPS[currentStep].title}</h2>
                 </div>
-                <p className="text-sm text-muted-foreground mt-0.5">
+                <p className="text-sm text-nb-ink/60 mt-0.5">
                   {DEMO_STEPS[currentStep].subtitle}
                 </p>
               </div>
               <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
+                whileHover={{ y: -2 }}
+                whileTap={{ y: 0 }}
                 onClick={() => runStep(DEMO_STEPS[currentStep].id)}
                 disabled={running}
-                className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold transition-all ${
+                className={`nb-btn ${
                   running
-                    ? "bg-white/10 text-muted-foreground"
-                    : `bg-gradient-to-r ${DEMO_STEPS[currentStep].color} text-white hover:shadow-lg`
+                    ? "bg-nb-bg text-nb-ink/50"
+                    : `${DEMO_STEPS[currentStep].color} text-white`
                 }`}
               >
                 {running ? (
@@ -506,21 +506,21 @@ export default function Demo() {
           </div>
 
           {/* Description */}
-          <div className="px-6 py-4 bg-white/[0.02]">
-            <p className="text-sm text-muted-foreground leading-relaxed">
+          <div className="px-1 py-4 mt-5">
+            <p className="text-sm text-nb-ink/70 leading-relaxed">
               {DEMO_STEPS[currentStep].description}
             </p>
           </div>
 
           {/* Output Console */}
           {stepResults[DEMO_STEPS[currentStep].id]?.logs?.length > 0 && (
-            <div className="border-t border-white/10">
-              <div className="p-4 bg-[hsl(222,47%,4%)]">
+            <div className="border-t-2 border-nb-ink -mx-5 -mb-5">
+              <div className="p-4 bg-nb-ink">
                 <div className="flex items-center gap-2 mb-3">
-                  <div className="w-3 h-3 rounded-full bg-[hsl(0,72%,51%)]" />
-                  <div className="w-3 h-3 rounded-full bg-[hsl(38,92%,50%)]" />
-                  <div className="w-3 h-3 rounded-full bg-[hsl(142,76%,36%)]" />
-                  <span className="text-xs text-muted-foreground ml-2 font-mono">
+                  <div className="w-3 h-3 rounded-full bg-nb-error border border-white/20" />
+                  <div className="w-3 h-3 rounded-full bg-nb-warn border border-white/20" />
+                  <div className="w-3 h-3 rounded-full bg-nb-ok border border-white/20" />
+                  <span className="text-xs text-white/50 ml-2 font-mono">
                     dct-protocol-demo
                   </span>
                 </div>
@@ -533,19 +533,19 @@ export default function Demo() {
                       transition={{ delay: i * 0.03 }}
                       className={`flex items-start gap-2 ${
                         log.type === "success"
-                          ? "text-[hsl(142,76%,36%)]"
+                          ? "text-nb-accent"
                           : log.type === "error"
-                          ? "text-[hsl(0,72%,51%)]"
+                          ? "text-nb-error"
                           : log.type === "warning"
-                          ? "text-[hsl(38,92%,50%)]"
+                          ? "text-nb-warn"
                           : log.type === "tx"
-                          ? "text-[hsl(199,89%,48%)]"
+                          ? "text-nb-accent-2"
                           : log.type === "code"
-                          ? "text-[hsl(265,89%,75%)]"
-                          : "text-muted-foreground"
+                          ? "text-purple-400"
+                          : "text-white/60"
                       }`}
                     >
-                      <span className="text-muted-foreground/50 select-none shrink-0">
+                      <span className="text-white/30 select-none shrink-0">
                         {String(i + 1).padStart(2, "0")}
                       </span>
                       <span className="break-all">
@@ -556,7 +556,7 @@ export default function Demo() {
                               href={`${basescanUrl}/tx/${log.msg.replace("  TX: ", "")}`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="underline hover:text-[hsl(187,92%,69%)]"
+                              className="underline hover:text-nb-accent"
                             >
                               {log.msg.replace("  TX: ", "").substring(0, 24)}...
                             </a>
@@ -568,7 +568,7 @@ export default function Demo() {
                     </motion.div>
                   ))}
                   {stepResults[DEMO_STEPS[currentStep].id]?.status === "running" && (
-                    <div className="flex items-center gap-2 text-[hsl(199,89%,48%)]">
+                    <div className="flex items-center gap-2 text-nb-accent-2">
                       <Loader2 className="w-3 h-3 animate-spin" />
                       <span>Awaiting transaction confirmation...</span>
                     </div>
@@ -579,22 +579,22 @@ export default function Demo() {
           )}
 
           {/* Navigation */}
-          <div className="p-4 border-t border-white/10 flex items-center justify-between">
+          <div className={`flex items-center justify-between ${stepResults[DEMO_STEPS[currentStep].id]?.logs?.length > 0 ? 'p-4 bg-nb-ink border-t border-white/10 -mx-5 -mb-5' : 'pt-2'}`}>
             <button
               onClick={() => setCurrentStep(Math.max(0, currentStep - 1))}
               disabled={currentStep === 0}
-              className="text-sm text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
+              className={`text-sm font-display font-semibold disabled:opacity-30 transition-colors ${stepResults[DEMO_STEPS[currentStep].id]?.logs?.length > 0 ? 'text-white/60 hover:text-white' : 'text-nb-ink/60 hover:text-nb-ink'}`}
             >
               ← Previous
             </button>
-            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <div className={`flex items-center gap-1 text-xs ${stepResults[DEMO_STEPS[currentStep].id]?.logs?.length > 0 ? 'text-white/40' : 'text-nb-ink/40'}`}>
               <Clock className="w-3 h-3" />
               ~1 minute per step
             </div>
             <button
               onClick={() => setCurrentStep(Math.min(DEMO_STEPS.length - 1, currentStep + 1))}
               disabled={currentStep === DEMO_STEPS.length - 1}
-              className="flex items-center gap-1 text-sm text-[hsl(199,89%,48%)] hover:text-[hsl(187,92%,69%)] disabled:opacity-30 transition-colors"
+              className={`flex items-center gap-1 text-sm font-display font-semibold disabled:opacity-30 transition-colors ${stepResults[DEMO_STEPS[currentStep].id]?.logs?.length > 0 ? 'text-nb-accent hover:text-nb-accent-2' : 'text-nb-accent-2 hover:text-nb-accent'}`}
             >
               Next <ChevronRight className="w-4 h-4" />
             </button>
@@ -613,24 +613,24 @@ export default function Demo() {
             <button
               key={step.id}
               onClick={() => setCurrentStep(i)}
-              className={`p-3 rounded-xl text-left transition-all ${
+              className={`p-3 rounded-nb text-left transition-all border-2 border-nb-ink bg-nb-card ${
                 isActive
-                  ? "glass-strong glow-blue"
+                  ? "shadow-nb -translate-y-1"
                   : isDone
-                  ? "glass border-[hsl(142,76%,36%)]/20"
-                  : "glass hover:bg-white/[0.07]"
+                  ? "shadow-nb-sm bg-nb-ok/10"
+                  : "hover:-translate-y-0.5 hover:shadow-nb-sm"
               }`}
             >
               <step.icon
                 className={`w-4 h-4 mb-2 ${
                   isDone
-                    ? "text-[hsl(142,76%,36%)]"
+                    ? "text-nb-ok"
                     : isActive
-                    ? "text-[hsl(199,89%,48%)]"
-                    : "text-muted-foreground"
+                    ? "text-nb-accent-2"
+                    : "text-nb-ink/40"
                 }`}
               />
-              <p className="text-xs font-medium truncate">{step.title}</p>
+              <p className="text-xs font-display font-bold truncate text-nb-ink">{step.title}</p>
             </button>
           );
         })}

@@ -15,7 +15,7 @@ import "@xyflow/react/dist/style.css";
 import DctStartNode from "./nodes/DctStartNode";
 import DctAgentNode from "./nodes/DctAgentNode";
 
-const defaultEdgeOptions = { animated: true, style: { stroke: "hsl(199,89%,48%)", strokeWidth: 1.5 } };
+const defaultEdgeOptions = { animated: true, style: { stroke: "hsl(24 5% 45%)", strokeWidth: 1.5 } };
 
 export default function LayerWorkflowCanvas({
   nodes,
@@ -60,7 +60,7 @@ export default function LayerWorkflowCanvas({
   );
 
   return (
-    <div className="h-[min(70vh,640px)] w-full rounded-xl border border-white/10 bg-[hsl(222,47%,5%)] overflow-hidden">
+    <div className="h-[min(70vh,640px)] w-full overflow-hidden rounded-2xl border border-stone-200 bg-white">
       <ReactFlowProvider>
       <ReactFlow
         nodes={nodes}
@@ -78,12 +78,12 @@ export default function LayerWorkflowCanvas({
         proOptions={{ hideAttribution: true }}
         className="bg-transparent"
       >
-        <Background color="hsl(220,10%,22%)" gap={20} size={1} />
-        <Controls className="!bg-[hsl(222,47%,10%)] !border-white/10 !shadow-lg" />
+        <Background color="hsl(30 10% 82%)" gap={20} size={1} />
+        <Controls className="!bg-white !border-stone-200 !shadow-lg" />
         <MiniMap
-          className="!bg-[hsl(222,47%,8%)] !border-white/10"
-          nodeColor={() => "hsl(199,89%,48%)"}
-          maskColor="rgba(0,0,0,0.65)"
+          className="!bg-stone-50 !border-stone-200"
+          nodeColor={() => "hsl(24 9% 28%)"}
+          maskColor="rgba(28,25,23,0.18)"
         />
       </ReactFlow>
       </ReactFlowProvider>

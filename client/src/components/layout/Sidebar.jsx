@@ -1,132 +1,88 @@
 import { NavLink } from "react-router-dom";
-import { motion } from "framer-motion";
-import { Shield, Play, Zap, ExternalLink, LayoutGrid } from "lucide-react";
+import {
+  Compass,
+  FlaskConical,
+  LayoutGrid,
+  Shield,
+  Sparkles,
+  Zap,
+} from "lucide-react";
 
-const operateItems = [
-  { to: "/layer", label: "Layer console", icon: LayoutGrid, end: false },
+const navItems = [
+  { to: "/layer", label: "Layer", icon: LayoutGrid, end: false },
+  { to: "/tlsn", label: "TLSN", icon: Shield, end: true },
+  { to: "/live-demo", label: "Live", icon: Sparkles, end: false },
+  { to: "/demo", label: "Quick", icon: FlaskConical, end: false },
 ];
 
-const demoItems = [
-  { to: "/tlsn",      label: "TLSNotary",    icon: Shield, end: true  },
-  { to: "/live-demo", label: "Live Demo",     icon: Zap,    end: false },
-  { to: "/demo",      label: "Quick demo",   icon: Play,   end: false },
-];
+function NavItem({ item, compact = false }) {
+  return (
+    <NavLink
+      key={item.to}
+      to={item.to}
+      end={item.end}
+      className={({ isActive }) =>
+        [
+          "group inline-flex items-center gap-3 border-2 border-nb-ink text-sm font-display font-semibold transition-all",
+          compact ? "justify-center rounded-nb px-3 py-2 text-xs" : "w-full rounded-nb px-4 py-2.5",
+          isActive
+            ? "bg-nb-accent text-nb-ink shadow-nb-sm -translate-y-0.5"
+            : "bg-nb-card text-nb-ink hover:bg-nb-accent/30 hover:-translate-y-0.5 active:translate-y-0",
+        ].join(" ")
+      }
+    >
+      <item.icon className={compact ? "h-4 w-4" : "h-4 w-4"} />
+      <span className={compact ? "sr-only" : ""}>{item.label}</span>
+    </NavLink>
+  );
+}
 
 export default function Sidebar() {
   return (
-    <aside className="fixed left-0 top-0 bottom-0 w-64 glass-strong z-50 flex flex-col">
-      <div className="p-6 border-b border-white/10">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[hsl(199,89%,48%)] to-[hsl(265,89%,65%)] flex items-center justify-center glow-blue">
-            <Shield className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold text-gradient-blue">DCT</h1>
-            <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-              Protocol
-            </p>
-          </div>
-        </div>
-      </div>
+    <>
+      <aside className="fixed left-0 top-0 hidden h-screen w-64 flex-col border-r-[3px] border-nb-ink bg-nb-bg px-4 py-6 md:flex">
+        <NavLink
+          to="/"
+          className="mb-8 inline-flex items-center gap-2 px-2 text-nb-ink active:scale-[0.99]"
+        >
+          <Zap className="h-5 w-5 text-nb-accent" />
+          <span className="font-display text-2xl font-bold tracking-tight">DCT Protocol</span>
+        </NavLink>
 
-      <nav className="flex-1 p-4 space-y-6 overflow-y-auto">
-        <div>
-          <p className="px-4 mb-2 text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-            Operate
-          </p>
-          <div className="space-y-1">
-            {operateItems.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                className={({ isActive }) =>
-                  `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 group ${
-                    isActive
-                      ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                      : "text-muted-foreground hover:text-foreground hover:bg-white/5 border border-transparent"
-                  }`
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    <item.icon
-                      className={`w-4 h-4 transition-colors ${
-                        isActive ? "text-emerald-400" : "text-muted-foreground group-hover:text-foreground"
-                      }`}
-                    />
-                    {item.label}
-                    {isActive && (
-                      <motion.div
-                        layoutId="nav-indicator-op"
-                        className="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-400"
-                        transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                      />
-                    )}
-                  </>
-                )}
-              </NavLink>
-            ))}
-          </div>
+        <div className="mb-3 px-2 text-[11px] font-display font-bold uppercase tracking-[0.16em] text-nb-ink/50">
+          Navigation
         </div>
-        <div>
-          <p className="px-4 mb-2 text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-            Demo mode
+        <nav className="space-y-2">
+          {navItems.map((item) => (
+            <NavItem key={item.to} item={item} />
+          ))}
+        </nav>
+
+        <div className="mt-auto nb-card-sm">
+          <p className="text-[11px] font-display font-bold uppercase tracking-wider text-nb-ink/50">Network</p>
+          <p className="mt-1 text-sm font-display font-bold text-nb-ink">Base Sepolia</p>
+          <p className="mt-2 text-xs leading-relaxed text-nb-ink/60">
+            Protocol playground for delegation flows, TLSNotary proofs, and layer orchestration.
           </p>
-          <div className="space-y-1">
-            {demoItems.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                className={({ isActive }) =>
-                  `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 group ${
-                    isActive
-                      ? "bg-[hsl(199,89%,48%)]/10 text-[hsl(199,89%,48%)] glow-blue"
-                      : "text-muted-foreground hover:text-foreground hover:bg-white/5"
-                  }`
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    <item.icon
-                      className={`w-4 h-4 transition-colors ${
-                        isActive
-                          ? "text-[hsl(199,89%,48%)]"
-                          : "text-muted-foreground group-hover:text-foreground"
-                      }`}
-                    />
-                    {item.label}
-                    {isActive && (
-                      <motion.div
-                        layoutId="nav-indicator"
-                        className="ml-auto w-1.5 h-1.5 rounded-full bg-[hsl(199,89%,48%)]"
-                        transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                      />
-                    )}
-                  </>
-                )}
-              </NavLink>
-            ))}
-          </div>
+          <a
+            href="https://sepolia.basescan.org"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-3 inline-flex items-center gap-2 text-xs font-display font-semibold text-nb-ink hover:text-nb-accent"
+          >
+            <Compass className="h-3.5 w-3.5" />
+            View on BaseScan
+          </a>
+        </div>
+      </aside>
+
+      <nav className="fixed inset-x-0 bottom-0 z-50 border-t-[3px] border-nb-ink bg-nb-bg p-2 md:hidden">
+        <div className="mx-auto grid max-w-md grid-cols-4 gap-1.5">
+          {navItems.map((item) => (
+            <NavItem key={item.to} item={item} compact />
+          ))}
         </div>
       </nav>
-
-      <div className="p-4 border-t border-white/10 space-y-3">
-        <p className="text-[10px] text-muted-foreground px-3 leading-relaxed">
-          Real TLSNotary proofs run in the browser (tlsn-js). The terminal script uses oracle signing unless you add a
-          separate prover API.
-        </p>
-        <a
-          href="https://sepolia.basescan.org"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors"
-        >
-          <ExternalLink className="w-3 h-3" />
-          BaseScan
-        </a>
-      </div>
-    </aside>
+    </>
   );
 }

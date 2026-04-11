@@ -14,26 +14,26 @@ const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
 const EVENT_STYLE = {
   DelegationRegistered: {
-    bg: "bg-blue-950/60",
-    badge: "bg-blue-700",
+    bg: "bg-nb-accent-2/10",
+    badge: "bg-nb-accent-2",
     icon: "🔗",
     label: "Delegated",
   },
   DelegationRevoked: {
-    bg: "bg-red-950/60",
-    badge: "bg-red-700",
+    bg: "bg-nb-error/10",
+    badge: "bg-nb-error",
     icon: "🚫",
     label: "Revoked",
   },
   TrustUpdated: {
-    bg: "bg-yellow-950/60",
-    badge: "bg-yellow-700",
+    bg: "bg-nb-warn/10",
+    badge: "bg-nb-warn",
     icon: "⚡",
     label: "Trust",
   },
   ActionValidated: {
-    bg: "bg-green-950/60",
-    badge: "bg-green-600",
+    bg: "bg-nb-ok/10",
+    badge: "bg-nb-ok",
     icon: "✓",
     label: "Validated",
   },
@@ -46,8 +46,8 @@ function shortHash(h) {
 
 function formatEvent(ev) {
   const style = EVENT_STYLE[ev.type] || {
-    bg: "bg-zinc-800",
-    badge: "bg-zinc-600",
+    bg: "bg-nb-bg",
+    badge: "bg-nb-ink/60",
     icon: "·",
     label: ev.type,
   };
@@ -113,32 +113,32 @@ export default function EventLog({ maxRows = 60, className = "" }) {
   const empty = events.length === 0;
 
   return (
-    <div className={`flex flex-col ${className}`}>
+    <div className={`flex flex-col overflow-hidden ${className}`}>
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-700/50">
-        <div className="flex items-center gap-2 text-sm font-mono font-semibold text-zinc-200">
+      <div className="flex items-center justify-between border-b-2 border-nb-ink bg-nb-bg px-3 py-2">
+        <div className="flex items-center gap-2 text-sm font-display font-bold text-nb-ink">
           <span className="text-base">📡</span> Chain Events
         </div>
         <div className="flex items-center gap-1.5">
           <span
-            className={`h-2 w-2 rounded-full ${
-              connected ? "bg-green-400 animate-pulse" : "bg-red-500"
+            className={`h-2.5 w-2.5 rounded-full border border-nb-ink ${
+              connected ? "bg-nb-ok animate-pulse" : "bg-nb-error"
             }`}
           />
-          <span className="text-xs text-zinc-400">
+          <span className="text-xs font-display font-semibold text-nb-ink/60">
             {connected ? "live" : error ?? "offline"}
           </span>
         </div>
       </div>
 
       {/* Feed */}
-      <div className="flex-1 overflow-y-auto min-h-0 max-h-96">
+      <div className="flex-1 overflow-y-auto min-h-0 max-h-96 bg-nb-card">
         {empty ? (
-          <div className="flex items-center justify-center h-24 text-zinc-600 text-sm font-mono">
+          <div className="flex h-24 items-center justify-center text-sm font-display font-semibold text-nb-ink/40">
             {connected ? "Waiting for on-chain events…" : "Connecting to event stream…"}
           </div>
         ) : (
-          <ul className="divide-y divide-zinc-800/50">
+          <ul className="divide-y-2 divide-nb-ink/10">
             {events.map((ev, i) => {
               const { style, detail } = formatEvent(ev);
               const txHash = ev.txHash;
@@ -153,11 +153,11 @@ export default function EventLog({ maxRows = 60, className = "" }) {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span
-                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold text-white ${style.badge}`}
+                        className={`px-1.5 py-0.5 rounded-nb text-[10px] font-display font-bold text-white border border-nb-ink ${style.badge}`}
                       >
                         {style.label}
                       </span>
-                      <span className="text-zinc-300 truncate">{detail}</span>
+                      <span className="truncate text-nb-ink">{detail}</span>
                     </div>
                     {txHash && (
                       <div className="mt-0.5 flex items-center gap-1">
@@ -165,16 +165,16 @@ export default function EventLog({ maxRows = 60, className = "" }) {
                           href={`https://sepolia.basescan.org/tx/${txHash}`}
                           target="_blank"
                           rel="noreferrer"
-                          className="text-blue-400 hover:text-blue-300 underline"
+                          className="text-nb-accent-2 hover:text-nb-accent underline"
                         >
                           {shortHash(txHash)}
                         </a>
                         {ev.blockNumber && (
-                          <span className="text-zinc-600">
+                          <span className="text-nb-ink/50">
                             block {ev.blockNumber}
                           </span>
                         )}
-                        <span className="ml-auto text-zinc-600">{ts}</span>
+                        <span className="ml-auto text-nb-ink/50">{ts}</span>
                       </div>
                     )}
                   </div>

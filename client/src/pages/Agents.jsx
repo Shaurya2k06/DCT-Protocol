@@ -10,17 +10,17 @@ import addresses from "../addresses.json";
 function TrustBar({ score }) {
   const pct = Math.min((parseFloat(score) / 2) * 100, 100);
   const color =
-    pct > 60 ? "from-[hsl(142,76%,36%)] to-[hsl(160,84%,39%)]" :
-    pct > 30 ? "from-[hsl(38,92%,50%)] to-[hsl(43,74%,66%)]" :
-    "from-[hsl(0,72%,51%)] to-[hsl(340,75%,55%)]";
+    pct > 60 ? "bg-nb-ok" :
+    pct > 30 ? "bg-nb-warn" :
+    "bg-nb-error";
 
   return (
-    <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden">
+    <div className="w-full h-3 rounded-full bg-nb-bg border-2 border-nb-ink overflow-hidden">
       <motion.div
         initial={{ width: 0 }}
         animate={{ width: `${pct}%` }}
         transition={{ duration: 1, ease: "easeOut" }}
-        className={`h-full rounded-full bg-gradient-to-r ${color}`}
+        className={`h-full ${color}`}
       />
     </div>
   );
@@ -38,56 +38,56 @@ function AgentCard({ agent, index }) {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.1 }}
-      className="glass rounded-2xl p-6 border-gradient glow-blue hover:scale-[1.02] transition-transform duration-300"
+      className="nb-card hover:-translate-y-1 active:translate-y-0 transition-transform duration-200"
     >
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[hsl(199,89%,48%)]/20 to-[hsl(265,89%,65%)]/20 flex items-center justify-center text-2xl">
+          <div className="w-12 h-12 rounded-nb border-2 border-nb-ink bg-nb-accent/20 flex items-center justify-center text-2xl">
             {icon}
           </div>
           <div>
-            <h3 className="font-semibold text-sm">{name}</h3>
-            <p className="text-xs text-muted-foreground font-mono">
+            <h3 className="font-display font-bold text-sm text-nb-ink">{name}</h3>
+            <p className="text-xs text-nb-ink/50 font-mono">
               Token #{agent.tokenId}
             </p>
           </div>
         </div>
-        <div className="px-2 py-1 rounded-md bg-[hsl(142,76%,36%)]/10 text-[hsl(142,76%,36%)] text-xs font-medium">
+        <span className="nb-pill-accent text-[10px]">
           ERC-8004
-        </div>
+        </span>
       </div>
 
       <div className="space-y-3">
         <div>
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-muted-foreground">Trust Score</span>
-            <span className="text-xs font-mono font-medium">
+            <span className="text-xs font-display font-semibold text-nb-ink/60">Trust Score</span>
+            <span className="text-xs font-mono font-bold text-nb-ink">
               {parseFloat(agent.trustScore).toFixed(4)} / 2.00
             </span>
           </div>
           <TrustBar score={agent.trustScore} />
         </div>
 
-        <div className="pt-3 border-t border-white/10">
-          <p className="text-xs text-muted-foreground mb-1">Owner</p>
+        <div className="pt-3 border-t-2 border-nb-ink/20">
+          <p className="text-xs font-display font-semibold text-nb-ink/60 mb-1">Owner</p>
           <div className="flex items-center gap-2">
-            <p className="text-xs font-mono text-foreground truncate">
+            <p className="text-xs font-mono text-nb-ink truncate">
               {agent.owner}
             </p>
             <a
               href={`${basescanUrl}/address/${agent.owner}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-muted-foreground hover:text-[hsl(199,89%,48%)] transition-colors shrink-0"
+              className="text-nb-ink/40 hover:text-nb-accent transition-colors shrink-0"
             >
               <ExternalLink className="w-3 h-3" />
             </a>
           </div>
         </div>
 
-        <div className="pt-3 border-t border-white/10">
-          <p className="text-xs text-muted-foreground mb-1">Agent URI</p>
-          <p className="text-xs font-mono text-[hsl(199,89%,48%)]">
+        <div className="pt-3 border-t-2 border-nb-ink/20">
+          <p className="text-xs font-display font-semibold text-nb-ink/60 mb-1">Agent URI</p>
+          <p className="text-xs font-mono text-nb-accent-2">
             {agent.uri}
           </p>
         </div>
@@ -145,15 +145,15 @@ export default function Agents() {
       {/* Agents Info Bar */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <div className="glass px-4 py-2 rounded-xl text-sm">
-            <span className="text-muted-foreground">Total Agents: </span>
-            <span className="font-bold text-[hsl(199,89%,48%)]">{agents.length}</span>
+          <div className="nb-pill">
+            <span className="text-nb-ink/60">Total Agents:</span>
+            <span className="font-bold text-nb-accent-2">{agents.length}</span>
           </div>
-          <div className="glass px-4 py-2 rounded-xl text-sm flex items-center gap-2">
-            <Shield className="w-4 h-4 text-[hsl(265,89%,65%)]" />
-            <span className="text-muted-foreground">Registry:</span>
+          <div className="nb-pill">
+            <Shield className="w-4 h-4 text-purple-600" />
+            <span className="text-nb-ink/60">Registry:</span>
             <span
-              className="font-mono text-xs text-[hsl(199,89%,48%)] truncate max-w-[140px]"
+              className="font-mono text-xs text-nb-accent-2 truncate max-w-[140px]"
               title={addresses.ERC8004IdentityRegistry}
             >
               {addresses.ERC8004IdentityRegistry?.slice(0, 10)}…
@@ -161,10 +161,10 @@ export default function Agents() {
           </div>
         </div>
         <motion.button
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
+          whileHover={{ y: -2 }}
+          whileTap={{ y: 0 }}
           onClick={() => setShowForm(!showForm)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-[hsl(199,89%,48%)] to-[hsl(265,89%,65%)] text-white text-sm font-medium hover:shadow-lg hover:shadow-[hsl(199,89%,48%)]/20 transition-shadow"
+          className="nb-btn-primary"
         >
           <Plus className="w-4 h-4" />
           Register Agent
@@ -179,21 +179,21 @@ export default function Agents() {
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             onSubmit={handleRegister}
-            className="glass rounded-2xl p-6 border-gradient overflow-hidden"
+            className="nb-card overflow-hidden"
           >
-            <h3 className="text-sm font-semibold mb-4">Register New Agent</h3>
+            <h3 className="text-sm font-display font-bold mb-4 text-nb-ink">Register New Agent</h3>
             <div className="flex gap-4">
               <input
                 type="text"
                 value={formUri}
                 onChange={(e) => setFormUri(e.target.value)}
                 placeholder="Agent URI (e.g. ipfs://my-agent)"
-                className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(199,89%,48%)]/50 focus:border-[hsl(199,89%,48%)]/50"
+                className="nb-input flex-1"
               />
               <button
                 type="submit"
                 disabled={registering}
-                className="px-6 py-2.5 rounded-xl bg-[hsl(199,89%,48%)] text-white text-sm font-medium disabled:opacity-50 flex items-center gap-2"
+                className="nb-btn-secondary disabled:opacity-50"
               >
                 {registering && <Loader2 className="w-4 h-4 animate-spin" />}
                 {registering ? "Registering..." : "Register"}
@@ -207,7 +207,7 @@ export default function Agents() {
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-64 rounded-2xl bg-white/5 animate-pulse" />
+            <div key={i} className="h-64 rounded-nb bg-nb-bg border-2 border-nb-ink/20 animate-pulse" />
           ))}
         </div>
       ) : (
@@ -219,9 +219,9 @@ export default function Agents() {
       )}
 
       {!loading && agents.length === 0 && (
-        <div className="text-center py-16 text-muted-foreground">
+        <div className="text-center py-16 text-nb-ink/50">
           <Users className="w-16 h-16 mx-auto mb-4 opacity-20" />
-          <p className="text-lg font-medium">No agents registered</p>
+          <p className="text-lg font-display font-bold">No agents registered</p>
           <p className="text-sm mt-1">Deploy contracts first, then agents will appear here</p>
         </div>
       )}

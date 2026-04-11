@@ -8,10 +8,10 @@ const eventIcons = {
 };
 
 const eventColors = {
-  delegation: "text-[hsl(199,89%,48%)] bg-[hsl(199,89%,48%)]/10",
-  revocation: "text-[hsl(0,72%,51%)] bg-[hsl(0,72%,51%)]/10",
-  validation: "text-[hsl(142,76%,36%)] bg-[hsl(142,76%,36%)]/10",
-  registration: "text-[hsl(265,89%,65%)] bg-[hsl(265,89%,65%)]/10",
+  delegation: "text-nb-accent-2 bg-nb-accent-2/15",
+  revocation: "text-nb-error bg-nb-error/15",
+  validation: "text-nb-ok bg-nb-ok/15",
+  registration: "text-purple-600 bg-purple-500/15",
 };
 
 export default function ActivityCard({ type, message, txHash, timestamp }) {
@@ -20,13 +20,13 @@ export default function ActivityCard({ type, message, txHash, timestamp }) {
   const basescanUrl = import.meta.env.VITE_BASESCAN_URL || "https://sepolia.basescan.org";
 
   return (
-    <div className="flex items-center gap-4 p-4 rounded-xl glass hover:bg-white/[0.07] transition-colors group">
-      <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${colorClass}`}>
+    <div className="group flex items-center gap-4 rounded-nb p-4 border-2 border-nb-ink bg-nb-card hover:bg-nb-accent/10 hover:-translate-y-0.5 active:translate-y-0 transition-all">
+      <div className={`w-10 h-10 rounded-nb border-2 border-nb-ink flex items-center justify-center shrink-0 ${colorClass}`}>
         <Icon className="w-5 h-5" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{message}</p>
-        <p className="text-xs text-muted-foreground mt-0.5">
+        <p className="text-sm font-display font-semibold truncate text-nb-ink">{message}</p>
+        <p className="mt-0.5 text-xs text-nb-ink/50">
           {timestamp || "Just now"}
         </p>
       </div>
@@ -35,7 +35,7 @@ export default function ActivityCard({ type, message, txHash, timestamp }) {
           href={`${basescanUrl}/tx/${txHash}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-muted-foreground hover:text-[hsl(199,89%,48%)] transition-colors opacity-0 group-hover:opacity-100"
+          className="text-nb-ink/40 hover:text-nb-accent transition-colors opacity-0 group-hover:opacity-100"
         >
           <ExternalLink className="w-4 h-4" />
         </a>

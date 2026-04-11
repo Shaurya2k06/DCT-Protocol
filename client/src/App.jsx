@@ -6,12 +6,21 @@ import LiveDemo from "./pages/LiveDemo";
 import LayerConsole from "./pages/LayerConsole";
 import Landing from "./pages/Landing";
 
-/** Landing page at root, sidebar-wrapped app under /app/* */
-function AppShell() {
+function ShellLayout({ children }) {
   return (
-    <div className="min-h-screen bg-background bg-grid dark">
+    <div className="min-h-screen bg-nb-bg">
       <Sidebar />
-      <main className="ml-64 p-8 max-w-[1400px]">
+      <main className="max-w-[1400px] md:ml-64 px-4 pt-6 pb-24 sm:px-6 sm:pt-8 md:pb-8 lg:px-10">
+        {children}
+      </main>
+    </div>
+  );
+}
+
+/** Landing page at root, sidebar-wrapped app under /app/* */
+function AppShellRoutes() {
+  return (
+    <ShellLayout>
         <Routes>
           <Route path="tlsn" element={<TlsnDemo />} />
           <Route path="live-demo" element={<LiveDemo />} />
@@ -20,49 +29,21 @@ function AppShell() {
           {/* default inner page */}
           <Route index element={<TlsnDemo />} />
         </Routes>
-      </main>
-    </div>
+    </ShellLayout>
   );
 }
 
 function App() {
   return (
-    <div className="dark">
+    <div className="bg-nb-bg">
       <Routes>
         <Route path="/" element={<Landing />} />
         {/* Keep legacy direct routes working */}
-        <Route path="/live-demo" element={
-          <div className="min-h-screen bg-background bg-grid dark">
-            <Sidebar />
-            <main className="ml-64 p-8 max-w-[1400px]">
-              <LiveDemo />
-            </main>
-          </div>
-        } />
-        <Route path="/demo" element={
-          <div className="min-h-screen bg-background bg-grid dark">
-            <Sidebar />
-            <main className="ml-64 p-8 max-w-[1400px]">
-              <Demo />
-            </main>
-          </div>
-        } />
-        <Route path="/tlsn" element={
-          <div className="min-h-screen bg-background bg-grid dark">
-            <Sidebar />
-            <main className="ml-64 p-8 max-w-[1400px]">
-              <TlsnDemo />
-            </main>
-          </div>
-        } />
-        <Route path="/layer" element={
-          <div className="min-h-screen bg-background bg-grid dark">
-            <Sidebar />
-            <main className="ml-64 p-8 max-w-[1400px]">
-              <LayerConsole />
-            </main>
-          </div>
-        } />
+        <Route path="/live-demo" element={<ShellLayout><LiveDemo /></ShellLayout>} />
+        <Route path="/demo" element={<ShellLayout><Demo /></ShellLayout>} />
+        <Route path="/tlsn" element={<ShellLayout><TlsnDemo /></ShellLayout>} />
+        <Route path="/layer" element={<ShellLayout><LayerConsole /></ShellLayout>} />
+        <Route path="/app/*" element={<AppShellRoutes />} />
       </Routes>
     </div>
   );

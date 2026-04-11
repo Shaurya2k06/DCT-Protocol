@@ -145,7 +145,7 @@ function AgentTree({ treeState, activeNode, lineageStep, agents, trustScores }) 
   };
 
   return (
-    <svg viewBox="0 0 400 440" className="w-full h-full">
+    <svg viewBox="0 0 400 440" className="w-full h-full" style={{ fontFamily: 'Space Grotesk, system-ui, sans-serif' }}>
       {/* edges */}
       {visible.research && (
         <motion.line
@@ -251,12 +251,12 @@ function CheckRow({ check, state }) {
     <motion.div
       initial={{ opacity: 0, x: -12 }}
       animate={{ opacity: 1, x: 0 }}
-      className={`flex items-start gap-3 p-3 rounded-lg border ${
-        state === "pass"  ? "border-[#34d399]/30 bg-[#34d399]/5" :
-        state === "fail"  ? "border-[#ef4444]/30 bg-[#ef4444]/5" :
-        state === "warn"  ? "border-[#fbbf24]/35 bg-[#fbbf24]/8" :
-        state === "pending" ? "border-[#22d3ee]/30 bg-[#22d3ee]/5" :
-        "border-white/10 bg-white/[0.02]"
+      className={`flex items-start gap-3 p-3 rounded-nb border-2 border-nb-ink ${
+        state === "pass"  ? "bg-nb-ok/15" :
+        state === "fail"  ? "bg-nb-error/15" :
+        state === "warn"  ? "bg-nb-warn/15" :
+        state === "pending" ? "bg-nb-accent-2/15" :
+        "bg-nb-card"
       }`}
     >
       <div className="mt-0.5 shrink-0">
@@ -267,8 +267,8 @@ function CheckRow({ check, state }) {
                                <div className="w-4 h-4 rounded-full border border-white/20" />}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-xs font-semibold">{check.label}</p>
-        <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">{check.detail}</p>
+        <p className="text-xs font-display font-bold text-nb-ink">{check.label}</p>
+        <p className="text-[11px] text-nb-ink/60 mt-0.5 leading-relaxed">{check.detail}</p>
         {check.gasNote && (
           <p className="text-[10px] text-[#818cf8] mt-1 font-mono">{check.gasNote}</p>
         )}
@@ -292,8 +292,8 @@ function CheckRow({ check, state }) {
 function DelegationDiff({ before, after, highlights }) {
   return (
     <div className="grid grid-cols-2 gap-3">
-      <div className="p-3 rounded-xl border border-white/10 bg-white/[0.02]">
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">{before.label}</p>
+      <div className="p-3 rounded-nb border-2 border-nb-ink bg-nb-card">
+        <p className="text-[10px] font-display font-bold uppercase tracking-wider text-nb-ink/50 mb-2">{before.label}</p>
         <div className="space-y-1">
           {before.tools.map(t => (
             <span key={t} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono mr-1 mb-1 ${
@@ -304,8 +304,8 @@ function DelegationDiff({ before, after, highlights }) {
           <div className="text-xs text-muted-foreground">Depth: {before.depth}</div>
         </div>
       </div>
-      <div className="p-3 rounded-xl border border-[#22d3ee]/20 bg-[#22d3ee]/5">
-        <p className="text-[10px] uppercase tracking-wider text-[#22d3ee] mb-2">{after.label}</p>
+      <div className="p-3 rounded-nb border-2 border-nb-accent-2 bg-nb-accent-2/10">
+        <p className="text-[10px] font-display font-bold uppercase tracking-wider text-nb-accent-2 mb-2">{after.label}</p>
         <div className="space-y-1">
           {after.tools.map(t => (
             <span key={t} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono mr-1 mb-1 bg-[#22d3ee]/20 text-[#22d3ee]">{t}</span>
@@ -329,9 +329,9 @@ function DelegationDiff({ before, after, highlights }) {
 
 function TrustBadge({ label, score, change }) {
   return (
-    <div className="flex items-center gap-2 p-2 rounded-lg bg-white/[0.03] border border-white/10">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="text-xs font-mono font-bold">{Number(score).toFixed(1)}</span>
+    <div className="flex items-center gap-2 p-2 rounded-nb border-2 border-nb-ink bg-nb-card">
+      <span className="text-xs font-display font-semibold text-nb-ink/60">{label}</span>
+      <span className="text-xs font-mono font-bold text-nb-ink">{Number(score).toFixed(1)}</span>
       {change && (
         <span className={`text-[11px] font-bold ${change > 0 ? "text-[#34d399]" : "text-[#ef4444]"}`}>
           {change > 0 ? "+" : ""}{change}
@@ -1185,8 +1185,8 @@ export default function LiveDemo() {
       {/* header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gradient-blue">DCT Protocol — Live Demo</h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <h1 className="text-2xl font-display font-bold text-nb-ink">DCT Protocol — Live Demo</h1>
+          <p className="text-sm text-nb-ink/60 mt-1">
             Delegated Capability Tokens · Base Sepolia · {live.transactions.length} tx so far
           </p>
         </div>
@@ -1195,9 +1195,9 @@ export default function LiveDemo() {
             type="button"
             onClick={runFullWorkflow}
             disabled={running}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-50 disabled:pointer-events-none transition-colors"
-            style={{ background: "linear-gradient(135deg, #6366f1, #22d3ee)" }}
+            className="nb-btn-primary text-xs disabled:opacity-50 disabled:pointer-events-none"
             title="Run phases 0–11 in sequence with shared workflow state"
+            style={{}}
           >
             {running && fullRunProgress ? (
               <>
@@ -1211,7 +1211,7 @@ export default function LiveDemo() {
               </>
             )}
           </button>
-          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+          <label className="flex items-center gap-2 text-xs text-nb-ink/60 font-display font-semibold cursor-pointer">
             <input
               type="checkbox"
               checked={autoAdvance}
@@ -1221,14 +1221,14 @@ export default function LiveDemo() {
             />
             Auto-advance
           </label>
-          <button onClick={reset} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg glass text-xs text-muted-foreground hover:text-foreground transition-colors">
+          <button onClick={reset} className="nb-btn-ghost text-xs">
             <RotateCcw className="w-3 h-3" /> Reset
           </button>
         </div>
       </div>
 
       {/* phase progress */}
-      <div className="glass rounded-2xl p-4 border-gradient overflow-x-auto">
+      <div className="nb-card overflow-x-auto">
         <div className="flex items-center gap-1 min-w-max">
           {PHASES.map((p, i) => {
             const done = i < step;
@@ -1237,17 +1237,17 @@ export default function LiveDemo() {
               <div key={p.id} className="flex items-center">
                 <button
                   onClick={() => setStep(i)}
-                  className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-medium transition-all min-w-[56px] ${
+                  className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-nb text-[10px] font-display font-bold transition-all min-w-[56px] ${
                     active ? "text-white" :
-                    done   ? "text-[#34d399]" :
-                             "text-muted-foreground hover:text-foreground"
+                    done   ? "text-nb-ok" :
+                             "text-nb-ink/50 hover:text-nb-ink"
                   }`}
                   style={active ? { background: `${stepColor}22`, border: `1px solid ${stepColor}55` } : {}}
                 >
-                  <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ${
-                    done   ? "bg-[#34d399] text-white" :
+                  <span className={`w-5 h-5 rounded-full border-2 border-nb-ink flex items-center justify-center text-[9px] font-bold ${
+                    done   ? "bg-nb-ok text-white" :
                     active ? `text-white` :
-                             "bg-white/10"
+                             "bg-nb-bg"
                   }`}
                   style={active ? { background: stepColor } : {}}>
                     {done ? "✓" : p.id}
@@ -1255,7 +1255,7 @@ export default function LiveDemo() {
                   {p.label}
                 </button>
                 {i < PHASES.length - 1 && (
-                  <div className={`w-4 h-px mx-0.5 ${done ? "bg-[#34d399]" : "bg-white/10"}`} />
+                  <div className={`w-4 h-0.5 mx-0.5 border-t-2 border-dashed ${done ? "border-nb-ok" : "border-nb-ink/20"}`} />
                 )}
               </div>
             );
@@ -1267,8 +1267,8 @@ export default function LiveDemo() {
       <div className="grid grid-cols-[280px_1fr] gap-4 items-start">
 
         {/* left: agent tree */}
-        <div className="glass rounded-2xl p-4 border-gradient sticky top-4">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Agent Tree</p>
+        <div className="nb-card sticky top-4">
+          <p className="text-xs font-display font-bold text-nb-ink/50 uppercase tracking-wider mb-3">Agent Tree</p>
           <div className="h-[340px]">
             <AgentTree
               treeState={live.treeState}
@@ -1279,7 +1279,7 @@ export default function LiveDemo() {
             />
           </div>
           {/* tx count */}
-          <div className="mt-3 pt-3 border-t border-white/10 grid grid-cols-2 gap-2">
+          <div className="mt-3 pt-3 border-t-2 border-nb-ink/20 grid grid-cols-2 gap-2">
             {[
               { label: "Txs", value: live.transactions.length },
               { label: "Agents", value: Object.values(live.agents).filter(Boolean).length },
@@ -1287,8 +1287,8 @@ export default function LiveDemo() {
               { label: "Gas", value: live.transactions.length ? "~$0.04" : "$0" },
             ].map(s => (
               <div key={s.label} className="text-center">
-                <p className="text-sm font-bold">{s.value}</p>
-                <p className="text-[10px] text-muted-foreground">{s.label}</p>
+                <p className="text-sm font-display font-bold text-nb-ink">{s.value}</p>
+                <p className="text-[10px] font-display text-nb-ink/50">{s.label}</p>
               </div>
             ))}
           </div>
@@ -1305,30 +1305,30 @@ export default function LiveDemo() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -16 }}
               transition={{ duration: 0.25 }}
-              className="glass rounded-2xl overflow-hidden border-gradient"
+              className="nb-card overflow-hidden"
             >
               {/* header */}
-              <div className="p-5 border-b border-white/10">
+              <div className="p-5 border-b-2 border-nb-ink -m-5 mb-0">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/10 text-muted-foreground">
+                      <span className="nb-pill text-[10px]">
                         Phase {step}
                       </span>
-                      <span className="text-[10px] text-muted-foreground">{PHASES[step]?.label}</span>
+                      <span className="text-[10px] font-display font-semibold text-nb-ink/50">{PHASES[step]?.label}</span>
                     </div>
-                    <h2 className="text-lg font-bold">{stepTitle[step]}</h2>
-                    <p className="text-sm text-muted-foreground mt-0.5">{stepSubtitle[step]}</p>
+                    <h2 className="text-lg font-display font-bold text-nb-ink">{stepTitle[step]}</h2>
+                    <p className="text-sm text-nb-ink/60 mt-0.5">{stepSubtitle[step]}</p>
                   </div>
                   <motion.button
-                    whileHover={{ scale: 1.04 }}
-                    whileTap={{ scale: 0.96 }}
+                    whileHover={{ y: -2 }}
+                    whileTap={{ y: 0 }}
                     onClick={() => runStep(step)}
                     disabled={running}
-                    className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold shrink-0 transition-all ${
-                      running ? "bg-white/10 text-muted-foreground" : "text-white"
+                    className={`nb-btn text-sm shrink-0 ${
+                      running ? "bg-nb-bg text-nb-ink/50" : "bg-nb-accent text-nb-ink"
                     }`}
-                    style={!running ? { background: `linear-gradient(135deg, ${stepColor}, ${stepColor}aa)` } : {}}
+                    style={{}}
                   >
                     {running ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
                     {running ? "Running…" : "Run"}
@@ -1337,7 +1337,7 @@ export default function LiveDemo() {
               </div>
 
               {/* step-specific UI */}
-              <div className="p-5 space-y-4">
+              <div className="p-5 space-y-4 mt-5">
 
                 {/* Phase 0: health checks */}
                 {step === 0 && (
@@ -1345,10 +1345,10 @@ export default function LiveDemo() {
                     {["chain","registry","enforcer","erc8004","pimlico","tlsn"].map(k => {
                       const h = live.health[k];
                       return (
-                        <div key={k} className={`flex items-center gap-2 p-2.5 rounded-lg border text-xs ${
-                          h?.ok ? "border-[#34d399]/30 bg-[#34d399]/5" :
-                          h     ? "border-[#ef4444]/30 bg-[#ef4444]/5" :
-                                  "border-white/10 bg-white/[0.02]"
+                        <div key={k} className={`flex items-center gap-2 p-2.5 rounded-nb border-2 border-nb-ink text-xs font-display font-semibold ${
+                          h?.ok ? "bg-nb-ok/15" :
+                          h     ? "bg-nb-error/15" :
+                                  "bg-nb-card"
                         }`}>
                           {h?.ok ? <CheckCircle2 className="w-3.5 h-3.5 text-[#34d399]" /> :
                            h     ? <XCircle className="w-3.5 h-3.5 text-[#ef4444]" /> :
@@ -1379,7 +1379,7 @@ export default function LiveDemo() {
                 {/* Phase 5+7: execution checks */}
                 {(step === 5 || step === 7) && live.checks.length > 0 && (
                   <div className="space-y-2">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    <p className="text-xs font-display font-bold text-nb-ink/50 uppercase tracking-wider">
                       DCTEnforcer.validateActionWithScope
                     </p>
                     {live.checks.map(c => (
@@ -1391,7 +1391,7 @@ export default function LiveDemo() {
                 {/* Phase 9: lineage walk */}
                 {step === 9 && (
                   <div className="space-y-2">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    <p className="text-xs font-display font-bold text-nb-ink/50 uppercase tracking-wider">
                       isRevoked() — Lineage Walk
                     </p>
                     {[
@@ -1405,10 +1405,10 @@ export default function LiveDemo() {
                         <motion.div key={h.hop}
                           initial={{ opacity: 0.3 }}
                           animate={{ opacity: active || done ? 1 : 0.3 }}
-                          className={`flex items-center gap-3 p-2.5 rounded-lg border text-xs ${
-                            done && h.revoked ? "border-[#ef4444]/40 bg-[#ef4444]/5" :
-                            active            ? "border-[#fbbf24]/40 bg-[#fbbf24]/5" :
-                                                "border-white/10"
+                          className={`flex items-center gap-3 p-2.5 rounded-nb border-2 border-nb-ink text-xs font-display font-semibold ${
+                            done && h.revoked ? "bg-nb-error/15" :
+                            active            ? "bg-nb-warn/15" :
+                                                "bg-nb-card"
                           }`}>
                           <span className="text-muted-foreground font-mono">hop {h.hop}</span>
                           <span className="font-medium">{h.label}</span>
@@ -1431,9 +1431,9 @@ export default function LiveDemo() {
                       { label: "Gas cost",                value: "~21,000" },
                       { label: "Agents actively killed",  value: "0 (lazy)" },
                     ].map(s => (
-                      <div key={s.label} className="p-3 rounded-xl bg-white/[0.03] border border-white/10">
-                        <p className="text-sm font-bold">{s.value}</p>
-                        <p className="text-[10px] text-muted-foreground mt-0.5">{s.label}</p>
+                      <div key={s.label} className="p-3 rounded-nb border-2 border-nb-ink bg-nb-card">
+                        <p className="text-sm font-display font-bold text-nb-ink">{s.value}</p>
+                        <p className="text-[10px] font-display text-nb-ink/50 mt-0.5">{s.label}</p>
                       </div>
                     ))}
                   </div>
@@ -1455,7 +1455,7 @@ export default function LiveDemo() {
                         { event: "Payment violated",          research: 101, payment: 90  },
                         { event: "Root revoked",              research: 101, payment: 90  },
                       ].map((r, i) => (
-                        <div key={i} className="flex items-center gap-3 text-[11px] p-2 rounded-lg bg-white/[0.02]">
+                        <div key={i} className="flex items-center gap-3 text-[11px] p-2 rounded-nb bg-nb-bg border border-nb-ink/20">
                           <span className="text-muted-foreground flex-1">{r.event}</span>
                           <span className="font-mono text-[#22d3ee]">R: {r.research}</span>
                           <span className="font-mono text-[#34d399]">P: {r.payment}</span>
@@ -1476,13 +1476,13 @@ export default function LiveDemo() {
                       { label: "Auth servers consulted",  value: "0" },
                       { label: "Gas & fees (Σ receipts)", value: live.summary.gasEstimate },
                     ].map(s => (
-                      <div key={s.label} className="p-3 rounded-xl bg-white/[0.03] border border-white/10">
-                        <p className={`font-mono font-bold leading-snug break-words ${s.label.includes("Gas") ? "text-[11px]" : "text-base"}`}>{s.value}</p>
-                        <p className="text-[10px] text-muted-foreground mt-0.5">{s.label}</p>
+                      <div key={s.label} className="p-3 rounded-nb border-2 border-nb-ink bg-nb-card">
+                        <p className={`font-mono font-bold text-nb-ink leading-snug break-words ${s.label.includes("Gas") ? "text-[11px]" : "text-base"}`}>{s.value}</p>
+                        <p className="text-[10px] font-display text-nb-ink/50 mt-0.5">{s.label}</p>
                       </div>
                     ))}
-                    <div className="col-span-2 p-3 rounded-xl border border-[#818cf8]/20 bg-[#818cf8]/5 text-center">
-                      <p className="text-sm text-[#818cf8] font-semibold italic">
+                    <div className="col-span-2 p-3 rounded-nb border-2 border-nb-accent bg-nb-accent/15 text-center">
+                      <p className="text-sm text-nb-ink font-display font-bold italic">
                         &ldquo;Sudo for AI agents. Trustless. Composable. MIT licensed.&rdquo;
                       </p>
                     </div>
@@ -1494,15 +1494,15 @@ export default function LiveDemo() {
 
           {/* log panel — terminal-style */}
           {live.logs.length > 0 && (
-            <div className="rounded-xl overflow-hidden border border-zinc-800/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-              <div className="bg-[#070a0e] px-3 py-2 flex items-center gap-2 border-b border-zinc-800/80">
-                <Terminal className="w-3.5 h-3.5 text-emerald-500/90" />
-                <span className="text-[11px] font-mono text-zinc-500">base-sepolia</span>
-                <span className="text-[10px] font-mono text-zinc-600 ml-auto">
+            <div className="rounded-nb overflow-hidden border-2 border-nb-ink shadow-nb">
+              <div className="bg-nb-ink px-3 py-2 flex items-center gap-2 border-b-2 border-white/10">
+                <Terminal className="w-3.5 h-3.5 text-nb-accent" />
+                <span className="text-[11px] font-mono text-white/50">base-sepolia</span>
+                <span className="text-[10px] font-mono text-white/30 ml-auto">
                   {live.transactions.length} tx · demo log
                 </span>
               </div>
-              <div className="bg-[#0c1016] p-3">
+              <div className="bg-nb-ink p-3">
                 <div className="space-y-0 max-h-[320px] overflow-y-auto font-mono text-[11px] leading-snug">
                   {live.logs.map((log, i) => (
                     <motion.div
@@ -1540,14 +1540,14 @@ export default function LiveDemo() {
           )}
 
           {/* on-chain event log */}
-          <div className="glass rounded-xl border-gradient overflow-hidden">
+          <div className="nb-card-sm overflow-hidden">
             <EventLog maxRows={50} />
           </div>
 
           {/* tx ledger — previews + Basescan */}
           {live.transactions.length > 0 && (
-            <div className="rounded-xl border border-zinc-800/80 bg-[#0c1016]/90 overflow-hidden">
-              <p className="text-[10px] font-mono font-semibold text-zinc-500 uppercase tracking-wider px-3 py-2 border-b border-zinc-800/80 flex items-center gap-2">
+            <div className="rounded-nb border-2 border-nb-ink bg-nb-ink overflow-hidden shadow-nb-sm">
+              <p className="text-[10px] font-mono font-semibold text-white/50 uppercase tracking-wider px-3 py-2 border-b-2 border-white/10 flex items-center gap-2">
                 <Link2 className="w-3 h-3" />
                 On-chain transactions ({live.transactions.length})
               </p>
@@ -1567,7 +1567,7 @@ export default function LiveDemo() {
                       href={`${BASESCAN}/tx/${tx.hash}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="block rounded-lg border border-zinc-800/90 bg-black/30 px-3 py-2.5 hover:border-cyan-900/60 hover:bg-black/45 transition-colors group"
+                      className="block rounded-nb border-2 border-white/15 bg-white/5 px-3 py-2.5 hover:border-nb-accent/50 hover:bg-white/10 transition-colors group"
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">
@@ -1623,16 +1623,16 @@ export default function LiveDemo() {
             <button
               onClick={() => setStep(Math.max(0, step - 1))}
               disabled={step === 0}
-              className="px-4 py-2 rounded-xl glass text-sm text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
+              className="nb-btn-ghost text-sm disabled:opacity-30"
             >
               ← Prev
             </button>
-            <span className="text-xs text-muted-foreground">{step + 1} / {PHASES.length}</span>
+            <span className="text-xs text-nb-ink/50 font-display font-semibold">{step + 1} / {PHASES.length}</span>
             <button
               onClick={() => setStep(Math.min(PHASES.length - 1, step + 1))}
               disabled={step === PHASES.length - 1}
-              className="flex items-center gap-1 px-4 py-2 rounded-xl text-sm font-medium transition-colors"
-              style={{ color: stepColor }}
+              className="flex items-center gap-1 nb-btn-secondary text-sm"
+              style={{}}
             >
               Next <ChevronRight className="w-4 h-4" />
             </button>

@@ -87,27 +87,25 @@ export default function Dashboard() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden rounded-2xl glass-strong p-8 glow-blue"
+        className="relative overflow-hidden nb-card bg-nb-accent"
       >
-        <div className="absolute inset-0 bg-grid opacity-50" />
         <div className="relative z-10 flex items-center gap-6">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[hsl(199,89%,48%)] to-[hsl(265,89%,65%)] flex items-center justify-center shadow-lg">
-            <Shield className="w-8 h-8 text-white" />
+          <div className="w-16 h-16 rounded-nb border-2 border-nb-ink bg-nb-ink flex items-center justify-center shadow-nb-sm">
+            <Shield className="w-8 h-8 text-nb-accent" />
           </div>
           <div>
-            <h2 className="text-2xl font-bold">
-              <span className="text-gradient-blue">Verifiable, Cascading, Trust-Aware</span>{" "}
-              Authority
+            <h2 className="text-2xl font-display font-bold text-nb-ink">
+              Verifiable, Cascading, Trust-Aware Authority
             </h2>
-            <p className="text-muted-foreground mt-1 max-w-2xl">
+            <p className="text-nb-ink/70 mt-1 max-w-2xl font-body">
               Cryptographic delegation for autonomous multi-agent systems.
               Authority only narrows. Revocation is lazy and O(1). No trusted intermediary.
             </p>
           </div>
         </div>
-        {/* Decorative elements */}
-        <div className="absolute -right-8 -top-8 w-40 h-40 rounded-full bg-[hsl(199,89%,48%)]/5 blur-3xl" />
-        <div className="absolute -right-4 -bottom-4 w-32 h-32 rounded-full bg-[hsl(265,89%,65%)]/5 blur-3xl" />
+        {/* Decorative corner elements */}
+        <div className="absolute -right-4 -top-4 w-20 h-20 rounded-full border-[3px] border-nb-ink bg-nb-accent-2/30" />
+        <div className="absolute right-8 -bottom-6 w-14 h-14 rounded-full border-[3px] border-nb-ink bg-nb-warn/30" />
       </motion.div>
 
       {/* Stats Grid */}
@@ -153,33 +151,33 @@ export default function Dashboard() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="glass rounded-2xl p-6 border-gradient"
+          className="nb-card"
         >
-          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <Zap className="w-5 h-5 text-[hsl(38,92%,50%)]" />
+          <h3 className="text-lg font-display font-bold mb-4 flex items-center gap-2 text-nb-ink">
+            <Zap className="w-5 h-5 text-nb-warn" />
             Protocol Stack
           </h3>
           <div className="space-y-3">
             {[
-              { layer: "L1", name: "Eclipse Biscuit", desc: "Off-chain token — offline attenuation", color: "from-[hsl(199,89%,48%)] to-[hsl(187,92%,69%)]" },
-              { layer: "L2", name: "DCTRegistry.sol", desc: "On-chain lineage tree + lazy revocation", color: "from-[hsl(265,89%,65%)] to-[hsl(199,89%,48%)]" },
-              { layer: "L3", name: "DCTEnforcer.sol", desc: "ERC-7710 caveat enforcer", color: "from-[hsl(38,92%,50%)] to-[hsl(30,80%,55%)]" },
-              { layer: "L4", name: "TLSNotary", desc: "MPC-TLS action verification (Rust)", color: "from-[hsl(142,76%,36%)] to-[hsl(160,84%,39%)]" },
-              { layer: "L5", name: "ERC-8004", desc: "Agent identity — NFT registry", color: "from-[hsl(0,72%,51%)] to-[hsl(340,75%,55%)]" },
+              { layer: "L1", name: "Eclipse Biscuit", desc: "Off-chain token — offline attenuation", bg: "bg-nb-accent-2" },
+              { layer: "L2", name: "DCTRegistry.sol", desc: "On-chain lineage tree + lazy revocation", bg: "bg-purple-500" },
+              { layer: "L3", name: "DCTEnforcer.sol", desc: "ERC-7710 caveat enforcer", bg: "bg-nb-warn" },
+              { layer: "L4", name: "TLSNotary", desc: "MPC-TLS action verification (Rust)", bg: "bg-nb-ok" },
+              { layer: "L5", name: "ERC-8004", desc: "Agent identity — NFT registry", bg: "bg-nb-error" },
             ].map((item, i) => (
               <motion.div
                 key={item.layer}
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.4 + i * 0.1 }}
-                className="flex items-center gap-4 p-3 rounded-xl hover:bg-white/5 transition-colors"
+                className="flex items-center gap-4 p-3 rounded-nb border-2 border-nb-ink hover:bg-nb-accent/10 hover:-translate-y-0.5 active:translate-y-0 transition-all"
               >
-                <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${item.color} flex items-center justify-center text-xs font-bold text-white shrink-0`}>
+                <div className={`w-10 h-10 rounded-nb border-2 border-nb-ink ${item.bg} flex items-center justify-center text-xs font-display font-bold text-white shrink-0`}>
                   {item.layer}
                 </div>
                 <div>
-                  <p className="text-sm font-semibold">{item.name}</p>
-                  <p className="text-xs text-muted-foreground">{item.desc}</p>
+                  <p className="text-sm font-display font-bold text-nb-ink">{item.name}</p>
+                  <p className="text-xs text-nb-ink/60">{item.desc}</p>
                 </div>
               </motion.div>
             ))}
@@ -191,13 +189,13 @@ export default function Dashboard() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
-          className="glass rounded-2xl p-6 border-gradient"
+          className="nb-card"
         >
-          <h3 className="text-lg font-semibold mb-4">Recent Activity</h3>
+          <h3 className="text-lg font-display font-bold mb-4 text-nb-ink">Recent Activity</h3>
           {loading ? (
             <div className="space-y-3">
               {[...Array(4)].map((_, i) => (
-                <div key={i} className="h-16 rounded-xl bg-white/5 animate-pulse" />
+                <div key={i} className="h-16 rounded-nb bg-nb-bg border-2 border-nb-ink/20 animate-pulse" />
               ))}
             </div>
           ) : activities.length > 0 ? (
@@ -207,9 +205,9 @@ export default function Dashboard() {
               ))}
             </div>
           ) : (
-            <div className="text-center py-12 text-muted-foreground">
+            <div className="text-center py-12 text-nb-ink/50">
               <GitBranch className="w-12 h-12 mx-auto mb-3 opacity-30" />
-              <p className="text-sm">No activity yet</p>
+              <p className="text-sm font-display font-semibold">No activity yet</p>
               <p className="text-xs mt-1">Deploy contracts and run the demo to see events</p>
             </div>
           )}

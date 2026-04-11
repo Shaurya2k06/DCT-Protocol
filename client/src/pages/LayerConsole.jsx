@@ -216,8 +216,8 @@ export default function LayerConsole() {
 
   if (!ready) {
     return (
-      <div className="flex items-center justify-center min-h-[50vh] gap-3 text-muted-foreground">
-        <Loader2 className="w-5 h-5 animate-spin text-[hsl(199,89%,48%)]" />
+      <div className="flex items-center justify-center min-h-[50vh] gap-3 text-nb-ink/60 font-display font-semibold">
+        <Loader2 className="w-5 h-5 animate-spin text-nb-accent-2" />
         Loading layer snapshot…
       </div>
     );
@@ -228,16 +228,16 @@ export default function LayerConsole() {
       <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-[10px] uppercase tracking-[0.2em] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+            <span className="nb-pill-accent text-[10px]">
               Normal mode
             </span>
-            <span className="text-[10px] text-muted-foreground">Operator console</span>
+            <span className="text-[10px] text-nb-ink/50 font-display font-semibold">Operator console</span>
           </div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <LayoutGrid className="w-7 h-7 text-[hsl(199,89%,48%)]" />
+          <h1 className="text-2xl font-display font-bold flex items-center gap-2 text-nb-ink">
+            <LayoutGrid className="w-7 h-7 text-nb-accent-2" />
             Layer console
           </h1>
-          <p className="text-sm text-muted-foreground mt-1 max-w-xl">
+          <p className="text-sm text-nb-ink/60 mt-1 max-w-xl">
             Connect OpenClaw, design an agent workflow with spend and tool limits, then save.
             The graph is stored on the DCT API; secrets never leave this browser.
           </p>
@@ -247,7 +247,7 @@ export default function LayerConsole() {
             type="button"
             onClick={handleTestOpenClaw}
             disabled={testing}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl glass text-sm text-muted-foreground hover:text-foreground border border-white/10"
+            className="nb-btn-ghost text-sm"
           >
             {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
             Test /health
@@ -256,7 +256,7 @@ export default function LayerConsole() {
             type="button"
             onClick={handleSave}
             disabled={saving}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[hsl(199,89%,48%)]/20 text-[hsl(199,89%,48%)] border border-[hsl(199,89%,48%)]/40 hover:bg-[hsl(199,89%,48%)]/30 text-sm font-medium"
+            className="nb-btn-secondary text-sm"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             Save to layer
@@ -268,10 +268,10 @@ export default function LayerConsole() {
         <motion.div
           initial={{ opacity: 0, y: -6 }}
           animate={{ opacity: 1, y: 0 }}
-          className={`flex items-start gap-2 rounded-xl px-4 py-3 text-sm border ${
+          className={`flex items-start gap-2 rounded-nb px-4 py-3 text-sm border-2 border-nb-ink font-display font-semibold ${
             msg.type === "ok"
-              ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-200"
-              : "bg-red-500/10 border-red-500/30 text-red-200"
+              ? "bg-nb-ok/15 text-nb-ok"
+              : "bg-nb-error/15 text-nb-error"
           }`}
         >
           {msg.type === "ok" ? (
@@ -286,25 +286,25 @@ export default function LayerConsole() {
       <div className="grid lg:grid-cols-[minmax(300px,360px)_1fr] gap-6 items-start">
         {/* OpenClaw */}
         <div className="space-y-4">
-          <div className="glass rounded-2xl border border-white/10 p-5">
+          <div className="nb-card">
             <div className="flex items-center gap-2 mb-4">
-              <Server className="w-4 h-4 text-[hsl(199,89%,48%)]" />
-              <h2 className="text-sm font-semibold">OpenClaw</h2>
+              <Server className="w-4 h-4 text-nb-accent-2" />
+              <h2 className="text-sm font-display font-bold text-nb-ink">OpenClaw</h2>
             </div>
-            <label className="block text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+            <label className="block text-[10px] font-display font-bold uppercase tracking-wider text-nb-ink/50 mb-1">
               Base URL
             </label>
             <input
-              className="w-full rounded-lg bg-black/30 border border-white/10 px-3 py-2 text-sm font-mono mb-3"
+              className="nb-input font-mono mb-3"
               placeholder="https://openclaw.example.com"
               value={openClawBase}
               onChange={(e) => setOpenClawBase(e.target.value)}
             />
-            <label className="block text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+            <label className="block text-[10px] font-display font-bold uppercase tracking-wider text-nb-ink/50 mb-1">
               Auth
             </label>
             <select
-              className="w-full rounded-lg bg-black/30 border border-white/10 px-3 py-2 text-sm mb-3"
+              className="nb-select mb-3"
               value={authMode}
               onChange={(e) => setAuthMode(e.target.value)}
             >
@@ -314,12 +314,12 @@ export default function LayerConsole() {
             </select>
             {authMode === "bearer" && (
               <>
-                <label className="block text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+                <label className="block text-[10px] font-display font-bold uppercase tracking-wider text-nb-ink/50 mb-1">
                   Bearer token
                 </label>
                 <input
                   type="password"
-                  className="w-full rounded-lg bg-black/30 border border-white/10 px-3 py-2 text-sm font-mono"
+                  className="nb-input font-mono"
                   placeholder="Stored in localStorage only"
                   value={bearer}
                   onChange={(e) => setBearer(e.target.value)}
@@ -328,16 +328,16 @@ export default function LayerConsole() {
             )}
             {authMode === "mtls" && (
               <>
-                <label className="block text-[10px] uppercase tracking-wider text-muted-foreground mb-1 mt-2">
+                <label className="block text-[10px] font-display font-bold uppercase tracking-wider text-nb-ink/50 mb-1 mt-2">
                   Client PEM (local only)
                 </label>
                 <textarea
-                  className="w-full min-h-[120px] rounded-lg bg-black/30 border border-white/10 px-3 py-2 text-[11px] font-mono"
+                  className="nb-input min-h-[120px] text-[11px] font-mono"
                   placeholder={"-----BEGIN CERTIFICATE-----\n…"}
                   value={pemText}
                   onChange={(e) => setPemText(e.target.value)}
                 />
-                <p className="text-[10px] text-muted-foreground mt-2 leading-relaxed">
+                <p className="text-[10px] text-nb-ink/50 mt-2 leading-relaxed">
                   Browsers cannot attach PEM to fetch() easily — use a same-origin proxy or your DCT
                   server to bridge OpenClaw. This field is only stored in your browser.
                 </p>
@@ -346,30 +346,30 @@ export default function LayerConsole() {
           </div>
 
           {/* Inspector */}
-          <div className="glass rounded-2xl border border-white/10 p-5">
-            <h2 className="text-sm font-semibold mb-3">Selected node</h2>
+          <div className="nb-card">
+            <h2 className="text-sm font-display font-bold mb-3 text-nb-ink">Selected node</h2>
             {!selectedAgent && (
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-nb-ink/50">
                 Click an agent node to edit limits, or add a new agent below the canvas.
               </p>
             )}
             {selectedAgent && (
               <div className="space-y-3 text-sm">
                 <div>
-                  <label className="text-[10px] uppercase text-muted-foreground">Name</label>
+                  <label className="text-[10px] font-display font-bold uppercase text-nb-ink/50">Name</label>
                   <input
-                    className="w-full mt-1 rounded-lg bg-black/30 border border-white/10 px-3 py-2"
+                    className="nb-input mt-1"
                     value={selectedAgent.data?.title ?? ""}
                     onChange={(e) => patchAgent({ title: e.target.value })}
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] uppercase text-muted-foreground">
+                  <label className="text-[10px] font-display font-bold uppercase text-nb-ink/50">
                     Spend cap (µUSDC, 6 decimals)
                   </label>
                   <input
                     type="number"
-                    className="w-full mt-1 rounded-lg bg-black/30 border border-white/10 px-3 py-2 font-mono"
+                    className="nb-input mt-1 font-mono"
                     value={selectedAgent.data?.spendLimitUsdc ?? 0}
                     onChange={(e) =>
                       patchAgent({ spendLimitUsdc: Number(e.target.value) || 0 })
@@ -378,12 +378,12 @@ export default function LayerConsole() {
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-[10px] uppercase text-muted-foreground">Max depth</label>
+                    <label className="text-[10px] font-display font-bold uppercase text-nb-ink/50">Max depth</label>
                     <input
                       type="number"
                       min={1}
                       max={8}
-                      className="w-full mt-1 rounded-lg bg-black/30 border border-white/10 px-3 py-2"
+                      className="nb-input mt-1"
                       value={selectedAgent.data?.maxDepth ?? 3}
                       onChange={(e) =>
                         patchAgent({ maxDepth: Number(e.target.value) || 1 })
@@ -391,11 +391,11 @@ export default function LayerConsole() {
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] uppercase text-muted-foreground">Expires (h)</label>
+                    <label className="text-[10px] font-display font-bold uppercase text-nb-ink/50">Expires (h)</label>
                     <input
                       type="number"
                       min={1}
-                      className="w-full mt-1 rounded-lg bg-black/30 border border-white/10 px-3 py-2"
+                      className="nb-input mt-1"
                       value={selectedAgent.data?.expiresHours ?? 24}
                       onChange={(e) =>
                         patchAgent({ expiresHours: Number(e.target.value) || 1 })
@@ -404,11 +404,11 @@ export default function LayerConsole() {
                   </div>
                 </div>
                 <div>
-                  <label className="text-[10px] uppercase text-muted-foreground">
+                  <label className="text-[10px] font-display font-bold uppercase text-nb-ink/50">
                     Allowed tools (comma-separated)
                   </label>
                   <input
-                    className="w-full mt-1 rounded-lg bg-black/30 border border-white/10 px-3 py-2 font-mono text-xs"
+                    className="nb-input mt-1 font-mono text-xs"
                     value={selectedAgent.data?.allowedTools ?? ""}
                     onChange={(e) => patchAgent({ allowedTools: e.target.value })}
                   />
@@ -416,7 +416,7 @@ export default function LayerConsole() {
                 <button
                   type="button"
                   onClick={removeSelected}
-                  className="inline-flex items-center gap-2 text-xs text-red-400 hover:text-red-300"
+                  className="inline-flex items-center gap-2 text-xs font-display font-semibold text-nb-error hover:text-nb-error/80"
                 >
                   <Trash2 className="w-3 h-3" /> Remove node
                 </button>
@@ -428,11 +428,11 @@ export default function LayerConsole() {
         {/* Canvas */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-muted-foreground">Delegation workflow</h2>
+            <h2 className="text-sm font-display font-bold text-nb-ink/60">Delegation workflow</h2>
             <button
               type="button"
               onClick={addAgent}
-              className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10"
+              className="nb-pill hover:bg-nb-accent/30 transition-colors cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" /> Add agent
             </button>
@@ -444,7 +444,7 @@ export default function LayerConsole() {
             setEdges={setEdges}
             onSelectNodeId={setSelectedId}
           />
-          <p className="text-[10px] text-muted-foreground leading-relaxed">
+          <p className="text-[10px] text-nb-ink/50 leading-relaxed">
             Drag nodes, connect Entry → agents → downstream agents. Limits map to Biscuit / DCT scope
             when you run delegation from the server or SDK.
           </p>

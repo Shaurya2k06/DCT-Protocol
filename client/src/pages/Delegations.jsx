@@ -22,30 +22,25 @@ function AgentNode({ data }) {
   const isRevoked = data.isRevoked;
   const trustPct = Math.min((parseFloat(data.trustScore || "1") / 2) * 100, 100);
 
-  const borderColor = isRevoked
-    ? "border-[hsl(0,72%,51%)]/50"
-    : "border-[hsl(142,76%,36%)]/30";
-  const glowClass = isRevoked ? "glow-red" : "glow-green";
-
   return (
     <div
-      className={`glass rounded-xl p-4 min-w-[200px] border ${borderColor} ${glowClass} ${
-        isRevoked ? "opacity-60" : ""
+      className={`bg-nb-card rounded-nb p-4 min-w-[200px] border-2 border-nb-ink ${
+        isRevoked ? "opacity-60 shadow-[4px_4px_0_0_rgba(239,68,68,0.9)]" : "shadow-nb-sm"
       }`}
     >
       <div className="flex items-center gap-2 mb-2">
         <div
-          className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm ${
+          className={`w-8 h-8 rounded-nb border-2 border-nb-ink flex items-center justify-center text-sm ${
             isRevoked
-              ? "bg-[hsl(0,72%,51%)]/20 text-[hsl(0,72%,51%)]"
-              : "bg-[hsl(142,76%,36%)]/20 text-[hsl(142,76%,36%)]"
+              ? "bg-nb-error/20 text-nb-error"
+              : "bg-nb-ok/20 text-nb-ok"
           }`}
         >
           {isRevoked ? <ShieldOff className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
         </div>
         <div>
-          <p className="text-xs font-semibold">Agent #{data.agentId}</p>
-          <p className={`text-[10px] font-medium ${isRevoked ? "text-[hsl(0,72%,51%)]" : "text-[hsl(142,76%,36%)]"}`}>
+          <p className="text-xs font-display font-bold text-nb-ink">Agent #{data.agentId}</p>
+          <p className={`text-[10px] font-display font-bold ${isRevoked ? "text-nb-error" : "text-nb-ok"}`}>
             {isRevoked ? "REVOKED" : "ACTIVE"}
           </p>
         </div>
@@ -53,18 +48,18 @@ function AgentNode({ data }) {
 
       {/* Trust bar */}
       <div className="mt-2">
-        <div className="flex justify-between text-[10px] text-muted-foreground mb-0.5">
+        <div className="flex justify-between text-[10px] font-display font-semibold text-nb-ink/60 mb-0.5">
           <span>Trust</span>
           <span>{parseFloat(data.trustScore || "1").toFixed(2)}</span>
         </div>
-        <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
+        <div className="w-full h-2 rounded-full bg-nb-bg border border-nb-ink overflow-hidden">
           <div
-            className={`h-full rounded-full transition-all duration-500 ${
+            className={`h-full transition-all duration-500 ${
               isRevoked
-                ? "bg-[hsl(0,72%,51%)]"
+                ? "bg-nb-error"
                 : trustPct > 60
-                ? "bg-[hsl(142,76%,36%)]"
-                : "bg-[hsl(38,92%,50%)]"
+                ? "bg-nb-ok"
+                : "bg-nb-warn"
             }`}
             style={{ width: `${trustPct}%` }}
           />
@@ -72,7 +67,7 @@ function AgentNode({ data }) {
       </div>
 
       {/* Token ID (truncated) */}
-      <p className="text-[9px] font-mono text-muted-foreground mt-2 truncate">
+      <p className="text-[9px] font-mono text-nb-ink/40 mt-2 truncate">
         {data.nodeId?.substring(0, 18)}...
       </p>
     </div>
@@ -162,12 +157,12 @@ export default function Delegations() {
             type: "smoothstep",
             animated: !child.isRevoked,
             style: {
-              stroke: child.isRevoked ? "hsl(0, 72%, 51%)" : "hsl(199, 89%, 48%)",
-              strokeWidth: 2,
+              stroke: child.isRevoked ? "#EF4444" : "#60A5FA",
+              strokeWidth: 2.5,
             },
             markerEnd: {
               type: MarkerType.ArrowClosed,
-              color: child.isRevoked ? "hsl(0, 72%, 51%)" : "hsl(199, 89%, 48%)",
+              color: child.isRevoked ? "#EF4444" : "#60A5FA",
             },
           });
           layoutNode(child, startX + i * childWidth, y + 160, depth + 1);
@@ -247,30 +242,30 @@ export default function Delegations() {
       {/* Action Bar */}
       <div className="flex items-center gap-3">
         <motion.button
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
+          whileHover={{ y: -2 }}
+          whileTap={{ y: 0 }}
           onClick={() => { setShowForm(!showForm); setShowRevokeForm(false); }}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-[hsl(199,89%,48%)] to-[hsl(265,89%,65%)] text-white text-sm font-medium"
+          className="nb-btn-primary"
         >
           <Plus className="w-4 h-4" />
           Register Delegation
         </motion.button>
         <motion.button
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
+          whileHover={{ y: -2 }}
+          whileTap={{ y: 0 }}
           onClick={() => { setShowRevokeForm(!showRevokeForm); setShowForm(false); }}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[hsl(0,72%,51%)]/10 text-[hsl(0,72%,51%)] border border-[hsl(0,72%,51%)]/20 text-sm font-medium"
+          className="nb-btn-danger"
         >
           <ShieldOff className="w-4 h-4" />
           Revoke Token
         </motion.button>
         <motion.button
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
+          whileHover={{ y: -2 }}
+          whileTap={{ y: 0 }}
           onClick={fetchTree}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl glass text-sm font-medium"
+          className="nb-btn-ghost"
         >
-          <Zap className="w-4 h-4 text-[hsl(38,92%,50%)]" />
+          <Zap className="w-4 h-4 text-nb-warn" />
           Refresh
         </motion.button>
       </div>
@@ -282,31 +277,31 @@ export default function Delegations() {
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
-            className={`p-4 rounded-xl ${
+            className={`p-4 rounded-nb border-2 border-nb-ink ${
               txResult.type === "success"
-                ? "bg-[hsl(142,76%,36%)]/10 border border-[hsl(142,76%,36%)]/20"
-                : "bg-[hsl(0,72%,51%)]/10 border border-[hsl(0,72%,51%)]/20"
+                ? "bg-nb-ok/10"
+                : "bg-nb-error/10"
             }`}
           >
             {txResult.type === "success" ? (
               <div className="flex items-center gap-2 text-sm">
-                <ShieldCheck className="w-4 h-4 text-[hsl(142,76%,36%)]" />
-                <span className="text-[hsl(142,76%,36%)]">Transaction successful!</span>
+                <ShieldCheck className="w-4 h-4 text-nb-ok" />
+                <span className="text-nb-ok font-display font-bold">Transaction successful!</span>
                 {txResult.txHash && (
                   <a
                     href={`${basescanUrl}/tx/${txResult.txHash}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-[hsl(199,89%,48%)] font-mono text-xs underline ml-2"
+                    className="text-nb-accent-2 font-mono text-xs underline ml-2"
                   >
                     {txResult.txHash.substring(0, 18)}...
                   </a>
                 )}
               </div>
             ) : (
-              <div className="flex items-center gap-2 text-sm text-[hsl(0,72%,51%)]">
+              <div className="flex items-center gap-2 text-sm text-nb-error">
                 <AlertTriangle className="w-4 h-4" />
-                {txResult.error}
+                <span className="font-display font-bold">{txResult.error}</span>
               </div>
             )}
           </motion.div>
@@ -321,50 +316,50 @@ export default function Delegations() {
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             onSubmit={handleRegister}
-            className="glass rounded-2xl p-6 border-gradient overflow-hidden space-y-4"
+            className="nb-card overflow-hidden space-y-4"
           >
-            <h3 className="text-sm font-semibold">Register Root Delegation</h3>
+            <h3 className="text-sm font-display font-bold text-nb-ink">Register Root Delegation</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Agent Token ID</label>
+                <label className="text-xs font-display font-semibold text-nb-ink/60 mb-1 block">Agent Token ID</label>
                 <select
                   value={formData.parentAgentTokenId}
                   onChange={(e) => setFormData({ ...formData, parentAgentTokenId: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(199,89%,48%)]/50"
+                  className="nb-select"
                 >
                   {agents.map((a) => (
-                    <option key={a.tokenId} value={a.tokenId} className="bg-[hsl(222,47%,8%)]">
+                    <option key={a.tokenId} value={a.tokenId}>
                       Agent #{a.tokenId}
                     </option>
                   ))}
                 </select>
               </div>
               <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Allowed Tools</label>
+                <label className="text-xs font-display font-semibold text-nb-ink/60 mb-1 block">Allowed Tools</label>
                 <input
                   type="text"
                   value={formData.allowedTools}
                   onChange={(e) => setFormData({ ...formData, allowedTools: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(199,89%,48%)]/50"
+                  className="nb-input"
                   placeholder="web_fetch, research"
                 />
               </div>
               <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Spend Limit (USDC, 6 dec)</label>
+                <label className="text-xs font-display font-semibold text-nb-ink/60 mb-1 block">Spend Limit (USDC, 6 dec)</label>
                 <input
                   type="text"
                   value={formData.spendLimitUsdc}
                   onChange={(e) => setFormData({ ...formData, spendLimitUsdc: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(199,89%,48%)]/50"
+                  className="nb-input"
                 />
               </div>
               <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Max Depth</label>
+                <label className="text-xs font-display font-semibold text-nb-ink/60 mb-1 block">Max Depth</label>
                 <input
                   type="number"
                   value={formData.maxDepth}
                   onChange={(e) => setFormData({ ...formData, maxDepth: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(199,89%,48%)]/50"
+                  className="nb-input"
                   min="1"
                   max="8"
                 />
@@ -373,7 +368,7 @@ export default function Delegations() {
             <button
               type="submit"
               disabled={submitting}
-              className="px-6 py-2.5 rounded-xl bg-[hsl(199,89%,48%)] text-white text-sm font-medium disabled:opacity-50 flex items-center gap-2"
+              className="nb-btn-secondary disabled:opacity-50"
             >
               {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
               {submitting ? "Registering..." : "Register On-Chain"}
@@ -390,32 +385,32 @@ export default function Delegations() {
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             onSubmit={handleRevoke}
-            className="glass rounded-2xl p-6 border border-[hsl(0,72%,51%)]/20 overflow-hidden space-y-4"
+            className="nb-card overflow-hidden space-y-4 !border-nb-error"
           >
-            <h3 className="text-sm font-semibold text-[hsl(0,72%,51%)]">Revoke Delegation Token</h3>
-            <p className="text-xs text-muted-foreground">
+            <h3 className="text-sm font-display font-bold text-nb-error">Revoke Delegation Token</h3>
+            <p className="text-xs text-nb-ink/60">
               O(1) on-chain write — all downstream children fail isRevoked() lazily at execution time.
             </p>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Token Revocation ID</label>
+                <label className="text-xs font-display font-semibold text-nb-ink/60 mb-1 block">Token Revocation ID</label>
                 <input
                   type="text"
                   value={revokeData.tokenId}
                   onChange={(e) => setRevokeData({ ...revokeData, tokenId: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[hsl(0,72%,51%)]/50"
+                  className="nb-input"
                   placeholder="0x..."
                 />
               </div>
               <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Agent Token ID</label>
+                <label className="text-xs font-display font-semibold text-nb-ink/60 mb-1 block">Agent Token ID</label>
                 <select
                   value={revokeData.agentTokenId}
                   onChange={(e) => setRevokeData({ ...revokeData, agentTokenId: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(0,72%,51%)]/50"
+                  className="nb-select"
                 >
                   {agents.map((a) => (
-                    <option key={a.tokenId} value={a.tokenId} className="bg-[hsl(222,47%,8%)]">
+                    <option key={a.tokenId} value={a.tokenId}>
                       Agent #{a.tokenId}
                     </option>
                   ))}
@@ -425,7 +420,7 @@ export default function Delegations() {
             <button
               type="submit"
               disabled={submitting}
-              className="px-6 py-2.5 rounded-xl bg-[hsl(0,72%,51%)] text-white text-sm font-medium disabled:opacity-50 flex items-center gap-2"
+              className="nb-btn-danger disabled:opacity-50"
             >
               {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
               {submitting ? "Revoking..." : "Revoke — O(1) Gas"}
@@ -435,12 +430,12 @@ export default function Delegations() {
       </AnimatePresence>
 
       {/* Delegation Tree Visualization */}
-      <div className="glass rounded-2xl overflow-hidden border-gradient" style={{ height: "500px" }}>
+      <div className="nb-card overflow-hidden" style={{ height: "500px" }}>
         {loading ? (
           <div className="w-full h-full flex items-center justify-center">
             <div className="text-center">
-              <Loader2 className="w-8 h-8 mx-auto mb-3 animate-spin text-[hsl(199,89%,48%)]" />
-              <p className="text-sm text-muted-foreground">Loading delegation tree...</p>
+              <Loader2 className="w-8 h-8 mx-auto mb-3 animate-spin text-nb-accent-2" />
+              <p className="text-sm font-display font-semibold text-nb-ink/60">Loading delegation tree...</p>
             </div>
           </div>
         ) : nodes.length > 0 ? (
@@ -454,15 +449,15 @@ export default function Delegations() {
             fitViewOptions={{ padding: 0.3 }}
             className="bg-transparent"
           >
-            <Background color="hsl(199, 89%, 48%)" gap={40} size={1} style={{ opacity: 0.06 }} />
+            <Background color="#111" gap={40} size={1} style={{ opacity: 0.04 }} />
             <Controls />
           </ReactFlow>
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             <div className="text-center">
-              <GitBranch className="w-16 h-16 mx-auto mb-4 text-muted-foreground opacity-20" />
-              <p className="text-lg font-medium text-muted-foreground">No delegations yet</p>
-              <p className="text-sm text-muted-foreground mt-1">
+              <GitBranch className="w-16 h-16 mx-auto mb-4 text-nb-ink/20" />
+              <p className="text-lg font-display font-bold text-nb-ink/50">No delegations yet</p>
+              <p className="text-sm text-nb-ink/40 mt-1">
                 Register a delegation or run the demo to see the lineage tree
               </p>
             </div>
