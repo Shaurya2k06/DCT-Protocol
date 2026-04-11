@@ -382,7 +382,6 @@ export async function execute({
 
   const enforcer = getEnforcer();
   const signer = getSigner();
-  const signerAddr = await signer.getAddress();
   const toolHash = ethers.keccak256(ethers.toUtf8Bytes(toolName));
 
   const allowedTools = (meta.allowedTools || []).map((t) =>
@@ -396,7 +395,12 @@ export async function execute({
     };
   }
 
-  const nonce = await signer.provider.getTransactionCount(await signer.getAddress(), "pending");
+  const signerAddr = await signer.getAddress();
+  const [pendingCount, latestCount] = await Promise.all([
+    signer.provider.getTransactionCount(signerAddr, "pending"),
+    signer.provider.getTransactionCount(signerAddr, "latest"),
+  ]);
+  const nonce = Math.max(pendingCount, latestCount);
   const tx = await enforcer.validateActionWithScope(
     meta.revocationId,
     BigInt(agentTokenId),

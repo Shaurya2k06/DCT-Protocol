@@ -4,7 +4,7 @@
 
 import express from "express";
 import { ethers } from "ethers";
-import { authorizeToken, inspectToken, signNotaryAttestation } from "../lib/dct-sdk.js";
+import { authorizeToken, inspectToken, signNotaryAttestation, proveAndAttest } from "../lib/dct-sdk.js";
 import { sendValidateActionWithScopeUserOp } from "../lib/aa/pimlico-execute.mjs";
 import { audit } from "../lib/audit.js";
 
@@ -44,9 +44,22 @@ router.post("/execute-scope", async (req, res) => {
 
     const toolHash = ethers.keccak256(ethers.toUtf8Bytes(toolName));
     let tls = tlsAttestation;
-    const notaryPk = process.env.NOTARY_PRIVATE_KEY;
-    if ((!tls || tls === "0x") && notaryPk) {
-      tls = signNotaryAttestation(toolHash, notaryPk.replace(/^0x/, ""));
+    let tlsnProofHash = null;
+
+    if (!tls || tls === "0x") {
+      const url = req.body.url;
+      if (url && (process.env.TLSN_PROVER_URL || process.env.TLSN_NOTARY_URL)) {
+        try {
+          const proved = await proveAndAttest({ url, toolName });
+          tls = proved.inlineAttestation;
+          tlsnProofHash = proved.proofHash;
+        } catch (e) {
+          console.warn("[aa][tlsn] proof failed, falling back:", e.message);
+          tls = await signNotaryAttestation(toolHash);
+        }
+      } else {
+        tls = await signNotaryAttestation(toolHash);
+      }
     }
     const tlsHex = tls?.startsWith?.("0x") ? tls : `0x${tls || ""}`;
 
@@ -71,7 +84,7 @@ router.post("/execute-scope", async (req, res) => {
       expiresAt: meta.expiresAt ?? Math.floor(Date.now() / 1000) + 3600,
     });
 
-    await audit("aa.execute_scope", { ...result, agentTokenId, toolName }, req);
+    await audit("aa.execute_scope", { ...result, agentTokenId, toolName, tlsnProofHash }, req);
 
     res.json({
       success: true,

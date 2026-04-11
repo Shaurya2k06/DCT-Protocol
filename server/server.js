@@ -26,9 +26,11 @@ import biscuitRoutes from "./routes/biscuit.js";
 import configRoutes from "./routes/config.js";
 import aaRoutes from "./routes/aa.js";
 import integrationsDelegationRoutes from "./routes/integrations-delegation.js";
+import tlsnRoutes from "./routes/tlsn.js";
 
 app.use("/api/config", configRoutes);
 app.use("/api/integrations", integrationsDelegationRoutes);
+app.use("/api/tlsn", tlsnRoutes);
 app.use("/api/aa", aaRoutes);
 app.use("/api/delegation", delegationRoutes);
 app.use("/api/agents", agentRoutes);
@@ -55,7 +57,10 @@ app.get("/", (req, res) => {
     endpoints: [
       "GET  /api/config",
       "GET  /api/integrations/delegation-framework  ← ERC-7710 / EntryPoint / caveat addresses",
-      "POST /api/aa/execute-scope                  ← ERC-4337 + Pimlico (sponsored gas)",
+      "GET  /api/tlsn/config                        ← TLSNotary backend status + oracle address",
+      "POST /api/tlsn/prove                         ← Real TLSNotary proof + ECDSA attestations",
+      "POST /api/tlsn/commit                        ← Commit proof hash on-chain (audit trail)",
+      "POST /api/aa/execute-scope                   ← ERC-4337 + Pimlico (sponsored gas)",
       "GET  /api/agents",
       "GET  /api/agents/:tokenId/trust",
       "POST /api/agents/register",

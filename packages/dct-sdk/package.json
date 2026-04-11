@@ -1,6 +1,6 @@
 {
   "name": "@shaurya2k06/dctsdk",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Delegated Capability Tokens — Eclipse Biscuit + DCT on-chain validation",
   "type": "module",
   "main": "./src/index.mjs",

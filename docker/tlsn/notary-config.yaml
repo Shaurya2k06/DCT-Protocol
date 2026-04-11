@@ -1,0 +1,15 @@
+# TLSNotary notary-server configuration
+# Reference: https://github.com/tlsnotary/tlsn/tree/main/crates/notary/server
+
+server:
+  host: "0.0.0.0"
+  port: 7047
+  # Disable TLS for local Docker network (prover communicates internally)
+  tls_enabled: false
+
+notarization:
+  max_transcript_size: 32768
+  max_session_duration: 600   # seconds
+
+logging:
+  level: "info"

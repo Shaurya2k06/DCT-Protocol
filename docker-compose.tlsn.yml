@@ -1,0 +1,49 @@
+# TLSNotary infrastructure for DCT Protocol
+#
+# Starts two services:
+#   notary   — official TLSNotary notary server (signs MPC-TLS sessions)
+#   prover   — Rust HTTP wrapper around the TLSNotary prover binary
+#              Exposes POST /prove → proof JSON consumed by server/lib/tlsn/prover.mjs
+#
+# Usage:
+#   docker compose -f docker-compose.tlsn.yml up -d
+#   # Then set in server/.env:
+#   TLSN_PROVER_URL=http://localhost:9080
+#   TLSN_NOTARY_URL=http://localhost:7047
+#
+# The notary key printed at startup = TLSN_NOTARY_PUBKEY for server/lib/tlsn/verify.mjs.
+# To persist the notary key across restarts, mount docker/tlsn/notary-config.yaml.
+
+services:
+  notary:
+    image: ghcr.io/tlsnotary/tlsn/notary-server:latest
+    container_name: dct-notary
+    ports:
+      - "7047:7047"
+    environment:
+      - RUST_LOG=info
+    volumes:
+      - ./docker/tlsn/notary-config.yaml:/app/config/config.yaml:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:7047/info"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  prover:
+    build:
+      context: ./docker/tlsn/prover-api
+      dockerfile: Dockerfile
+    container_name: dct-tlsn-prover
+    ports:
+      - "9080:9080"
+    environment:
+      - NOTARY_HOST=notary
+      - NOTARY_PORT=7047
+      - PROVER_PORT=9080
+      - RUST_LOG=info,tlsn_prover=debug
+    depends_on:
+      notary:
+        condition: service_healthy
+    restart: unless-stopped

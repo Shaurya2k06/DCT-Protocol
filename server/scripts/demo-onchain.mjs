@@ -21,8 +21,8 @@ import {
   mintRootToken,
   execute,
   revoke,
-  signNotaryAttestation,
 } from "@shaurya2k06/dctsdk";
+import { proveAndAttest, signNotaryAttestation } from "../lib/tlsn/index.mjs";
 import { initDb, getPool, recordAudit } from "../lib/db.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -190,12 +190,79 @@ async function main() {
   console.log("    block:", delRc.blockNumber);
   await audit("demo.delegation.register", { agentId, txHash: delRc.hash, revocationId: minted.revocationId });
 
-  const notaryPk = normalizePk(process.env.NOTARY_PRIVATE_KEY || process.env.PRIVATE_KEY);
+  // ── TLSNotary step ────────────────────────────────────────────────────────
+  // Prove a real HTTP call, then attest the proof for on-chain use.
+  // Uses TLSN_PROVER_URL (Docker prover API) or oracle-only fallback.
   const toolHash = ethers.keccak256(ethers.toUtf8Bytes(toolName));
-  let tls = signNotaryAttestation(toolHash, notaryPk.replace(/^0x/, ""));
+
+  // Public endpoint to prove (safe, no auth required).
+  const proveUrl = "https://httpbin.org/get?tool=research&protocol=dct";
+
+  let tls;
+  let tlsnProofHash = null;
+  let tlsnCommitAttestation = null;
+
+  const tlsnEnabled =
+    process.env.TLSN_PROVER_URL?.trim() || process.env.TLSN_NOTARY_URL?.trim();
+
+  if (tlsnEnabled) {
+    console.log("\n[7a] TLSNotary: proving HTTP call via MPC …");
+    console.log("     url:", proveUrl);
+    try {
+      const proved = await proveAndAttest({ url: proveUrl, toolName });
+      tls = proved.inlineAttestation;
+      tlsnProofHash = proved.proofHash;
+      tlsnCommitAttestation = proved.commitAttestation;
+      console.log("     ✓ Proof generated, ed25519 notary signature verified");
+      console.log("     proofHash:", proved.proofHash);
+      console.log("     backend:  ", proved.proof.backend);
+      console.log("     response preview:", proved.proof.responsePreview?.slice(0, 80) + "…");
+    } catch (e) {
+      console.warn("     TLSNotary failed, using oracle-only attestation:", e.message);
+      tls = await signNotaryAttestation(toolHash);
+    }
+  } else {
+    console.log("\n[7a] TLSNotary: TLSN_PROVER_URL not set → oracle-only ECDSA attestation");
+    console.log("     (Start docker-compose.tlsn.yml + set TLSN_PROVER_URL for real MPC proofs)");
+    tls = await signNotaryAttestation(toolHash);
+  }
   if (!String(tls).startsWith("0x")) tls = `0x${tls}`;
 
-  console.log("\n[7] execute → DCTEnforcer.validateActionWithScope …");
+  // Optionally commit proof on-chain (audit trail in NotaryAttestationVerifier)
+  if (tlsnProofHash && tlsnCommitAttestation) {
+    const verifierAddr = addrs.NotaryAttestationVerifier;
+    if (verifierAddr) {
+      console.log("\n[7b] Committing TLSNotary proof hash to NotaryAttestationVerifier …");
+      try {
+        const verifierAbi = [
+          "function verifyAndCommit(bytes32 proofHash, bytes32 endpointHash, bytes calldata attestation) external returns (bool)",
+        ];
+        const verifier = new ethers.Contract(
+          ethers.getAddress(verifierAddr),
+          verifierAbi,
+          demo
+        );
+        const endpointHash = ethers.keccak256(ethers.toUtf8Bytes(toolName));
+        const commitTx = await verifier.verifyAndCommit(
+          tlsnProofHash,
+          endpointHash,
+          tlsnCommitAttestation
+        );
+        const commitRc = await commitTx.wait();
+        console.log("     tx:", commitRc.hash);
+        console.log("     ✓ proofHash committed on-chain — permissionlessly auditable");
+        await audit("demo.tlsn.commit", {
+          proofHash: tlsnProofHash,
+          txHash: commitRc.hash,
+          blockNumber: commitRc.blockNumber,
+        });
+      } catch (e) {
+        console.warn("     Commit failed (verifier may not be upgraded yet):", e.message);
+      }
+    }
+  }
+
+  console.log("\n[7c] execute → DCTEnforcer.validateActionWithScope …");
   const execResult = await execute({
     tokenB64: minted.serialized,
     agentTokenId: String(agentId),

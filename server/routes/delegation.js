@@ -10,6 +10,7 @@ import {
   revoke,
   getTokenByRevocationId,
   signNotaryAttestation,
+  proveAndAttest,
 } from "../lib/dct-sdk.js";
 import {
   getRegistry, getEnforcer, getSigner, ethers,
@@ -153,12 +154,26 @@ router.post("/delegate", async (req, res) => {
  */
 router.post("/execute", async (req, res) => {
   try {
-    const { tokenB64, agentTokenId, toolName, spendAmount, tlsAttestation } = req.body;
+    const { tokenB64, agentTokenId, toolName, spendAmount, tlsAttestation, url } = req.body;
     const toolHash = ethers.keccak256(ethers.toUtf8Bytes(toolName));
     let tls = tlsAttestation;
-    const notaryPk = process.env.NOTARY_PRIVATE_KEY;
-    if ((!tls || tls === "0x") && notaryPk) {
-      tls = signNotaryAttestation(toolHash, notaryPk);
+    let tlsnProof = null;
+
+    if (!tls || tls === "0x") {
+      if (url && (process.env.TLSN_PROVER_URL || process.env.TLSN_NOTARY_URL)) {
+        // Real TLSNotary proof — prove the HTTP call, then attest
+        try {
+          const proved = await proveAndAttest({ url, toolName });
+          tls = proved.inlineAttestation;
+          tlsnProof = { proofHash: proved.proofHash, commitAttestation: proved.commitAttestation };
+        } catch (tlsnErr) {
+          console.warn("[tlsn] proof failed, falling back to oracle-only attestation:", tlsnErr.message);
+          tls = await signNotaryAttestation(toolHash);
+        }
+      } else {
+        // Oracle-only attestation (no TLSNotary backend configured)
+        tls = await signNotaryAttestation(toolHash);
+      }
     }
     const result = await execute({
       tokenB64,
@@ -172,6 +187,8 @@ router.post("/execute", async (req, res) => {
       {
         agentTokenId,
         toolName,
+        url: url || null,
+        tlsnProofHash: tlsnProof?.proofHash || null,
         success: result.success,
         stage: result.stage,
         txHash: result.txHash,
@@ -179,7 +196,7 @@ router.post("/execute", async (req, res) => {
       },
       req
     );
-    res.json(result);
+    res.json({ ...result, tlsnProof });
   } catch (error) {
     console.error("Error executing:", error);
     res.status(500).json({ error: error.message });

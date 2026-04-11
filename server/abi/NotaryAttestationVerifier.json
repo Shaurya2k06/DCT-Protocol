@@ -38,6 +38,30 @@
     },
     {
       "type": "function",
+      "name": "isProofCommitted",
+      "inputs": [
+        {
+          "name": "proofHash",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "committed",
+          "type": "bool",
+          "internalType": "bool"
+        },
+        {
+          "name": "atBlock",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
       "name": "notarySigner",
       "inputs": [],
       "outputs": [
@@ -64,6 +88,25 @@
     },
     {
       "type": "function",
+      "name": "proofCommitments",
+      "inputs": [
+        {
+          "name": "",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
       "name": "proxiableUUID",
       "inputs": [],
       "outputs": [
@@ -79,6 +122,19 @@
       "type": "function",
       "name": "renounceOwnership",
       "inputs": [],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "setNotarySigner",
+      "inputs": [
+        {
+          "name": "_newSigner",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
       "outputs": [],
       "stateMutability": "nonpayable"
     },
@@ -138,6 +194,35 @@
       "stateMutability": "view"
     },
     {
+      "type": "function",
+      "name": "verifyAndCommit",
+      "inputs": [
+        {
+          "name": "proofHash",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        },
+        {
+          "name": "endpointHash",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        },
+        {
+          "name": "attestation",
+          "type": "bytes",
+          "internalType": "bytes"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "bool",
+          "internalType": "bool"
+        }
+      ],
+      "stateMutability": "nonpayable"
+    },
+    {
       "type": "event",
       "name": "Initialized",
       "inputs": [
@@ -146,6 +231,25 @@
           "type": "uint64",
           "indexed": false,
           "internalType": "uint64"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "NotarySignerUpdated",
+      "inputs": [
+        {
+          "name": "oldSigner",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
+        },
+        {
+          "name": "newSigner",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
         }
       ],
       "anonymous": false
@@ -165,6 +269,37 @@
           "type": "address",
           "indexed": true,
           "internalType": "address"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "TlsnProofCommitted",
+      "inputs": [
+        {
+          "name": "proofHash",
+          "type": "bytes32",
+          "indexed": true,
+          "internalType": "bytes32"
+        },
+        {
+          "name": "endpointHash",
+          "type": "bytes32",
+          "indexed": true,
+          "internalType": "bytes32"
+        },
+        {
+          "name": "signer",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
+        },
+        {
+          "name": "blockNumber",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
         }
       ],
       "anonymous": false
