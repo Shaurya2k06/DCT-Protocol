@@ -4,27 +4,28 @@ No network, no chain, no TLSNotary. Pure Python.
 
 Run:
     pip install pytest
-    pytest test_trust_score_unit.py -v
+    pytest pythonNodes/phase1.py -v
 """
 
 import math
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from web3 import Web3
 
 from trustScores import (
     AgentTier,
     ExecutionEvent,
     TaskExpectation,
-    TrustProfile,
     _PRIOR,
     _W1,
-    _W3,
     compute_trust_profile,
+    infer_task_completed,
     parse_tlsn_attestation,
     signal_1_scope_adherence,
     signal_2_task_completion,
     signal_3_outcome_quality,
+    tool_matches_expectation,
 )
 
 # ---------------------------------------------------------------------------
@@ -45,6 +46,7 @@ def make_event(
     latency_ms:     int  = 200,
     days_ago:       int  = 0,
     response_body:  dict = None,
+    revocation_id:  bytes = None,
 ) -> ExecutionEvent:
     return ExecutionEvent(
         agent_id       = agent_id,
@@ -56,6 +58,7 @@ def make_event(
         latency_ms     = latency_ms,
         timestamp      = NOW - timedelta(days=days_ago),
         response_body  = response_body or {},
+        revocation_id  = revocation_id,
     )
 
 
@@ -68,6 +71,11 @@ EXPECTATIONS = {
         tool      = "web_fetch",
         validator = web_fetch_validator,
     )
+}
+
+EXPECTATIONS_TWO_TOOLS = {
+    "web_fetch": TaskExpectation(tool="web_fetch", validator=web_fetch_validator),
+    "api_call": TaskExpectation(tool="api_call", validator=web_fetch_validator),
 }
 
 
@@ -106,6 +114,22 @@ class TestSignal1:
             make_event(agent_id=AGENT, scope_adhered=True),
         ]
         assert signal_1_scope_adherence(AGENT, events) == 1.0
+
+
+# ---------------------------------------------------------------------------
+# Tool hash ↔ expectation matching
+# ---------------------------------------------------------------------------
+
+class TestToolHashMatching:
+    def test_hex_tool_matches_human_key(self):
+        h = Web3.keccak(text="web_fetch")
+        hx = Web3.to_hex(h)
+        assert tool_matches_expectation(hx, "web_fetch")
+        assert signal_2_task_completion(
+            AGENT,
+            [make_event(tool=hx, response_body={"content": "ok"})],
+            EXPECTATIONS,
+        ) == 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -153,6 +177,17 @@ class TestSignal2:
         ]
         result = signal_2_task_completion(AGENT, events, EXPECTATIONS)
         assert abs(result - 0.5) < 1e-9
+
+    def test_chain_structural_completion_with_scope_hint(self):
+        rid = bytes.fromhex("aa" * 32)
+        ev = make_event(
+            tool="web_fetch",
+            response_body={},
+            spend_declared=1_000_000,
+            spend_limit=10_000_000,
+            revocation_id=rid,
+        )
+        assert infer_task_completed(ev, EXPECTATIONS["web_fetch"])
 
 
 # ---------------------------------------------------------------------------
@@ -249,10 +284,18 @@ class TestComputeTrustProfile:
         profile = compute_trust_profile(AGENT, events, EXPECTATIONS, now=NOW)
         assert profile.tier == AgentTier.SILVER
 
-    def test_gold_tier(self):
-        events = [make_event(response_body={"content": "data"}) for _ in range(55)]
-        profile = compute_trust_profile(AGENT, events, EXPECTATIONS, now=NOW)
+    def test_gold_tier_requires_two_distinct_tools_when_volume_high(self):
+        events = (
+            [make_event(tool="web_fetch", response_body={"content": "data"}) for _ in range(28)]
+            + [make_event(tool="api_call", response_body={"content": "data"}) for _ in range(27)]
+        )
+        profile = compute_trust_profile(AGENT, events, EXPECTATIONS_TWO_TOOLS, now=NOW)
         assert profile.tier == AgentTier.GOLD
+
+    def test_gold_blocked_single_tool_spam(self):
+        events = [make_event(tool="web_fetch", response_body={"content": "data"}) for _ in range(55)]
+        profile = compute_trust_profile(AGENT, events, EXPECTATIONS, now=NOW)
+        assert profile.tier == AgentTier.SILVER
 
     def test_bad_s2_caps_at_bronze(self):
         # 60 executions with bad completion should stay BRONZE despite count
@@ -267,7 +310,7 @@ class TestComputeTrustProfile:
         assert profile.tier == AgentTier.BRONZE
 
     def test_composite_formula(self):
-        # All perfect: s1=1.0, s3≈1.0 → composite ≈ 1.0
+        # All perfect: s1=1.0, s2≈1.0, s3≈1.0 → composite ≈ 1.0
         events = [
             make_event(
                 scope_adhered  = True,
@@ -275,6 +318,7 @@ class TestComputeTrustProfile:
                 spend_declared = 0,
                 spend_limit    = 10_000_000,
                 days_ago       = 0,
+                response_body  = {"content": "ok"},
             )
             for _ in range(10)
         ]
@@ -285,16 +329,21 @@ class TestComputeTrustProfile:
         # Tool without an expectation — s2 is None, should not penalise
         events = [make_event(tool="x402_pay") for _ in range(15)]
         profile = compute_trust_profile(AGENT, events, {}, now=NOW)
-        # s2 is None so tier is not capped
+        # s2 is None so tier is not capped by task failure
         assert profile.tier in (AgentTier.SILVER, AgentTier.BRONZE)
+
+    def test_expectations_but_no_matching_tools_stays_bronze(self):
+        events = [make_event(tool="x402_pay") for _ in range(15)]
+        profile = compute_trust_profile(AGENT, events, EXPECTATIONS, now=NOW)
+        assert profile.tier == AgentTier.BRONZE
 
     def test_prior_used_when_signal_missing(self):
         # Only one event — s1 is meaningful, s3 is also meaningful
         events = [make_event(scope_adhered=True, completed=True)]
         profile = compute_trust_profile(AGENT, events, EXPECTATIONS, now=NOW)
         expected_s1 = 1.0
-        # s3 with one perfect event ≈ 1.0
-        assert profile.composite_score >= _W1 * expected_s1
+        # s3 with one perfect event ≈ 1.0; composite uses W1*s1_eff + W2*s2 + W3*s3
+        assert profile.composite_score >= _W1 * expected_s1 * 0.85
 
 
 # ---------------------------------------------------------------------------
@@ -353,6 +402,6 @@ class TestParseTlsnAttestation:
         assert event is not None
 
     def test_completed_is_false_by_default(self):
-        # Signal 2 fills completed separately — parser never sets it True
+        # Prefer infer_task_completed when expectations are wired
         event = parse_tlsn_attestation(self._base())
         assert event.completed is False

@@ -48,6 +48,7 @@ from trustScores import (
     TaskExpectation,
     TrustProfile,
     compute_trust_profile,
+    load_events_from_chain as _load_trust_events_from_chain,
     parse_tlsn_attestation,
 )
 
@@ -489,55 +490,20 @@ def load_events_from_chain(
     w3:        Web3,
     enforcer,
     from_block: int = 0,
+    delegation_scope_hints: Optional[dict[str, int]] = None,
 ) -> list[ExecutionEvent]:
-    events: list[ExecutionEvent] = []
-    now = datetime.now(timezone.utc)
+    """
+    Pull ActionValidated / ActionRejected into ExecutionEvents (shared logic in trustScores).
 
-    try:
-        validated_logs = enforcer.events.ActionValidated.get_logs(
-            from_block=from_block
-        )
-        for log in validated_logs:
-            a = log["args"]
-            # Get block timestamp for accurate time-decay in Signal 3
-            block     = w3.eth.get_block(log["blockNumber"])
-            timestamp = datetime.fromtimestamp(block["timestamp"], tz=timezone.utc)
-
-            events.append(ExecutionEvent(
-                agent_id       = a["agentTokenId"],
-                tool           = Web3.to_hex(a["toolHash"]),
-                scope_adhered  = True,
-                completed      = False,   # Signal 2 applied separately
-                spend_declared = a["spendAmount"],
-                spend_limit    = 0,       # fetch from scopeCommitments if needed
-                latency_ms     = 0,
-                timestamp      = timestamp,
-                response_body  = {},
-            ))
-
-        rejected_logs = enforcer.events.ActionRejected.get_logs(
-            from_block=from_block
-        )
-        for log in rejected_logs:
-            a         = log["args"]
-            block     = w3.eth.get_block(log["blockNumber"])
-            timestamp = datetime.fromtimestamp(block["timestamp"], tz=timezone.utc)
-
-            events.append(ExecutionEvent(
-                agent_id       = a["agentTokenId"],
-                tool           = "",
-                scope_adhered  = False,
-                completed      = False,
-                spend_declared = 0,
-                spend_limit    = 0,
-                latency_ms     = 0,
-                timestamp      = timestamp,
-                response_body  = {},
-            ))
-
-    except Exception as exc:
-        print(f"[load_events_from_chain] warning: {exc}")
-
+    delegation_scope_hints: map Web3.to_hex(revocationId) -> spendLimitUsdc from registration;
+    commitments are hashed on-chain so limits must be supplied out-of-band.
+    """
+    events = _load_trust_events_from_chain(
+        enforcer,
+        from_block=from_block,
+        w3=w3,
+        delegation_scope_hints=delegation_scope_hints,
+    )
     print(f"  Loaded {len(events)} events from chain (from block {from_block})")
     return events
 
@@ -555,6 +521,7 @@ def get_trust_profile(
     expectations:  dict[str, TaskExpectation],
     from_block:    int = 0,
     preloaded_events: Optional[list[ExecutionEvent]] = None,
+    delegation_scope_hints: Optional[dict[str, int]] = None,
 ) -> TrustProfile:
     """
     Full pipeline:
@@ -563,7 +530,11 @@ def get_trust_profile(
       3. Compute off-chain trust profile
       4. Print both for visibility
     """
-    events = preloaded_events if preloaded_events is not None else load_events_from_chain(w3, enforcer, from_block)
+    events = (
+        preloaded_events
+        if preloaded_events is not None
+        else load_events_from_chain(w3, enforcer, from_block, delegation_scope_hints=delegation_scope_hints)
+    )
     profile = compute_trust_profile(
         agent_token_id,
         events,
@@ -725,6 +696,7 @@ def run_demo():
     print("\n--- Registering delegation ---")
     parent_id = Web3.keccak(text="demo-root")
     child_id  = Web3.keccak(text="demo-child-1")
+    scope_hints = {Web3.to_hex(child_id).lower(): 10_000_000}
 
     register_delegation(
         w3            = w3,
@@ -764,7 +736,7 @@ def run_demo():
         )
     }
 
-    events = load_events_from_chain(w3, enforcer, from_block=0)
+    events = load_events_from_chain(w3, enforcer, from_block=0, delegation_scope_hints=scope_hints)
     agent_ids = _discover_agent_ids(default=0)
     for event_agent_id in sorted({int(e.agent_id) for e in events}):
         if event_agent_id not in agent_ids:
@@ -775,13 +747,14 @@ def run_demo():
     profiles: list[TrustProfile] = []
     for agent_id in agent_ids:
         profile = get_trust_profile(
-            w3               = w3,
-            registry         = registry,
-            enforcer         = enforcer,
-            agent_token_id   = agent_id,
-            expectations     = expectations,
-            from_block       = 0,
-            preloaded_events = events,
+            w3                       = w3,
+            registry                 = registry,
+            enforcer                 = enforcer,
+            agent_token_id           = agent_id,
+            expectations             = expectations,
+            from_block               = 0,
+            preloaded_events         = events,
+            delegation_scope_hints   = scope_hints,
         )
         profiles.append(profile)
 
