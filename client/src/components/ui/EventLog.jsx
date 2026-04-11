@@ -93,7 +93,9 @@ export default function EventLog({ maxRows = 60, className = "" }) {
           const next = [ev, ...prev];
           return next.length > maxRows ? next.slice(0, maxRows) : next;
         });
-      } catch {}
+      } catch {
+        /* ignore malformed SSE payloads */
+      }
     });
 
     es.addEventListener("error", () => {

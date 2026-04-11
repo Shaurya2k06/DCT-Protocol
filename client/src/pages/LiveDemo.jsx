@@ -20,9 +20,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Shield, Play, CheckCircle2, XCircle, Loader2, ChevronRight,
-  AlertTriangle, RotateCcw, Zap, Link2, TrendingUp, TrendingDown,
-  ExternalLink,
+  Play, CheckCircle2, XCircle, Loader2, ChevronRight,
+  RotateCcw, Link2, ExternalLink,
 } from "lucide-react";
 import api from "../lib/api";
 import EventLog from "../components/ui/EventLog";
@@ -76,8 +75,6 @@ function AgentTree({ treeState, activeNode, lineageStep, agents, trustScores }) 
     if (lineageStep >= map[id]) return revoked ? "#ef4444" : "#fbbf24";
     return nodeColor(id);
   };
-
-  const strokeColor = lineageStep > 0 ? lineageColor : nodeColor;
 
   return (
     <svg viewBox="0 0 400 440" className="w-full h-full">
@@ -378,7 +375,7 @@ export default function LiveDemo() {
         case 1: {
           const agents = { orchestrator: null, research: null, payment: null };
 
-          for (const [id, meta] of [
+          for (const [id] of [
             ["orchestrator", "Orchestrator — root authority, manages delegation tree"],
             ["research",     "Research Agent — web fetch + data research"],
             ["payment",      "Payment Agent — x402 micro-payments only"],
@@ -1137,7 +1134,7 @@ export default function LiveDemo() {
                     ))}
                     <div className="col-span-2 p-3 rounded-xl border border-[#818cf8]/20 bg-[#818cf8]/5 text-center">
                       <p className="text-sm text-[#818cf8] font-semibold italic">
-                        "Sudo for AI agents. Trustless. Composable. MIT licensed."
+                        &ldquo;Sudo for AI agents. Trustless. Composable. MIT licensed.&rdquo;
                       </p>
                     </div>
                   </div>
