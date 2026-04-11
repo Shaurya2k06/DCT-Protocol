@@ -314,6 +314,146 @@ contract DCTRegistryTest is Test {
         assertEq(g, parentLimit / 10);
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Reentrancy / double-call safety
+    //
+    // DCTRegistry calls erc8004.ownerOf() — declared `view` in IERC8004, so the
+    // EVM issues a STATICCALL.  STATICCALL prevents any state mutation, making
+    // direct reentrancy via that path impossible by construction.
+    // nonReentrant is defense-in-depth for any future extensions.
+    //
+    // These tests verify the practical protection that matters most: you cannot
+    // register the same ID twice, you cannot exceed MAX_DEPTH, and the enforcer
+    // cannot be called by a non-enforcer.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    function test_DoubleRegister_Blocked() public {
+        bytes32 childId = keccak256("double-reg");
+        Scope memory scope = Scope({
+            allowedTools: _singleTool("x"),
+            spendLimitUsdc: 1_000_000,
+            maxDepth: 3,
+            expiresAt: uint64(block.timestamp + 3600)
+        });
+
+        vm.prank(a1);
+        registry.registerDelegation(bytes32(0), childId, scope, id1);
+
+        // Second attempt with the same childId must revert.
+        vm.expectRevert("DCT: child already registered");
+        vm.prank(a1);
+        registry.registerDelegation(bytes32(0), childId, scope, id1);
+    }
+
+    function test_ParentRevoked_Blocks_ChildRegistration() public {
+        // Once a parent delegation is revoked, a child cannot be registered under it.
+        bytes32 parentId = keccak256("par-block");
+        Scope memory scope = Scope({
+            allowedTools: _singleTool("t"),
+            spendLimitUsdc: 5_000_000,
+            maxDepth: 3,
+            expiresAt: uint64(block.timestamp + 3600)
+        });
+
+        vm.prank(a1);
+        registry.registerDelegation(bytes32(0), parentId, scope, id1);
+
+        // Revoke the parent.
+        vm.prank(a1);
+        registry.revoke(parentId, id1);
+        assertTrue(registry.isRevoked(parentId));
+
+        // Attempting to register a child of the now-revoked parent must revert.
+        bytes32 childId = keccak256("child-of-revoked");
+        vm.expectRevert("DCT: parent revoked");
+        vm.prank(a2);
+        registry.registerDelegation(parentId, childId, scope, id2);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Gas snapshots
+    // ─────────────────────────────────────────────────────────────────────────
+
+    function test_Gas_RegisterRoot() public {
+        bytes32 id = keccak256("gas-root");
+        Scope memory scope = Scope({
+            allowedTools: _singleTool("research"),
+            spendLimitUsdc: 50_000_000,
+            maxDepth: 3,
+            expiresAt: uint64(block.timestamp + 3600)
+        });
+
+        uint256 g = gasleft();
+        vm.prank(a1);
+        registry.registerDelegation(bytes32(0), id, scope, id1);
+        uint256 used = g - gasleft();
+
+        // Generous upper bound — flag regressions > 200 k gas.
+        assertLt(used, 200_000, "registerDelegation gas regression");
+        emit log_named_uint("gas:registerDelegation", used);
+    }
+
+    function test_Gas_IsRevoked_MaxDepth() public {
+        // Build a chain of MAX_DEPTH delegations, then measure isRevoked at the leaf.
+        uint8 depth = 8; // same as MAX_DEPTH in contract
+        bytes32 prev = bytes32(0);
+        bytes32 leaf;
+        for (uint8 i = 0; i < depth; i++) {
+            bytes32 cur = keccak256(abi.encode("gas-depth", i));
+            Scope memory scope = Scope({
+                allowedTools: _singleTool("t"),
+                spendLimitUsdc: 5_000_000,
+                maxDepth: depth,
+                expiresAt: uint64(block.timestamp + 3600)
+            });
+            vm.prank(a1);
+            registry.registerDelegation(prev, cur, scope, id1);
+            prev = cur;
+            leaf = cur;
+        }
+
+        uint256 g = gasleft();
+        bool r = registry.isRevoked(leaf);
+        uint256 used = g - gasleft();
+
+        assertFalse(r);
+        assertLt(used, 50_000, "isRevoked max-depth gas regression");
+        emit log_named_uint("gas:isRevoked(maxDepth)", used);
+    }
+
+    function test_Gas_ValidateActionWithScope() public {
+        bytes32 rootId = keccak256("gas-validate");
+        bytes32 toolHash = keccak256("research");
+        uint64 exp = uint64(block.timestamp + 3600);
+
+        Scope memory scope = Scope({
+            allowedTools: _singleToolHash(toolHash),
+            spendLimitUsdc: 50_000_000,
+            maxDepth: 3,
+            expiresAt: exp
+        });
+        vm.prank(a1);
+        registry.registerDelegation(bytes32(0), rootId, scope, id1);
+
+        // Sign a notary attestation for the tool hash
+        bytes32 digest = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", toolHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(NOTARY_PK, digest);
+        bytes memory sig = abi.encodePacked(r, s, v);
+
+        uint256 g = gasleft();
+        vm.prank(a1);
+        enforcer.validateActionWithScope(
+            rootId, id1, toolHash, 1_000_000, sig, a1,
+            scope.allowedTools, scope.spendLimitUsdc, scope.maxDepth, scope.expiresAt
+        );
+        uint256 used = g - gasleft();
+
+        assertLt(used, 300_000, "validateActionWithScope gas regression");
+        emit log_named_uint("gas:validateActionWithScope", used);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+
     function _singleTool(string memory name) internal pure returns (bytes32[] memory arr) {
         arr = new bytes32[](1);
         arr[0] = keccak256(bytes(name));
@@ -324,3 +464,4 @@ contract DCTRegistryTest is Test {
         arr[0] = h;
     }
 }
+

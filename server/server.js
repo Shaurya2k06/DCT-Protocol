@@ -11,6 +11,7 @@ import cors from "cors";
 import { initRootKey } from "./lib/dct-sdk.js";
 import { wireDCTSdk, loadAddresses } from "./lib/blockchain.js";
 import { initDb, getPool } from "./lib/db.js";
+import { subscribeChainEvents, chainEvents } from "./lib/chain-events.mjs";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -27,6 +28,7 @@ import configRoutes from "./routes/config.js";
 import aaRoutes from "./routes/aa.js";
 import integrationsDelegationRoutes from "./routes/integrations-delegation.js";
 import tlsnRoutes from "./routes/tlsn.js";
+import demoApiRoutes from "./routes/demo-api.js";
 
 app.use("/api/config", configRoutes);
 app.use("/api/integrations", integrationsDelegationRoutes);
@@ -35,6 +37,32 @@ app.use("/api/aa", aaRoutes);
 app.use("/api/delegation", delegationRoutes);
 app.use("/api/agents", agentRoutes);
 app.use("/api/biscuit", biscuitRoutes);
+// Demo-facing API surface (health checks + endpoint aliases)
+app.use("/api", demoApiRoutes);
+
+// ── SSE: real-time on-chain event stream ─────────────────────────────────────
+// GET /api/events — Server-Sent Events; subscribes to DCTRegistry + DCTEnforcer.
+// Clients: const es = new EventSource('/api/events');
+app.get("/api/events", (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  // Send a heartbeat every 25 s to keep proxies alive
+  const hb = setInterval(() => res.write(": heartbeat\n\n"), 25_000);
+
+  const handler = (ev) => {
+    res.write(`data: ${JSON.stringify(ev)}\n\n`);
+  };
+  chainEvents.on("event", handler);
+
+  req.on("close", () => {
+    clearInterval(hb);
+    chainEvents.off("event", handler);
+  });
+});
 
 // Health check
 app.get("/", (req, res) => {
@@ -76,6 +104,7 @@ app.get("/", (req, res) => {
       "POST /api/biscuit/authorize       ← Datalog check",
       "POST /api/biscuit/inspect         ← decode token blocks",
       "GET  /api/biscuit/rootkey",
+      "GET  /api/events                  ← SSE on-chain event stream (DelegationRegistered, Revoked, TrustUpdated, ActionValidated)",
     ],
   });
 });
@@ -92,6 +121,9 @@ async function start() {
 
   wireDCTSdk();
   initRootKey();
+  subscribeChainEvents().catch((e) =>
+    console.warn("  Events:   chain-events startup error —", e.message)
+  );
 
   app.listen(PORT, () => {
     console.log(`\n═══════════════════════════════════════════`);

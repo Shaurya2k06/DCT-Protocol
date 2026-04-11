@@ -2,6 +2,7 @@ import { Routes, Route } from "react-router-dom";
 import Sidebar from "./components/layout/Sidebar";
 import TlsnDemo from "./pages/TlsnDemo";
 import Demo from "./pages/Demo";
+import LiveDemo from "./pages/LiveDemo";
 
 /**
  * Primary UX: browser TLSNotary (/) — real tlsn-js WASM.
@@ -15,6 +16,7 @@ function App() {
         <Routes>
           <Route path="/" element={<TlsnDemo />} />
           <Route path="/demo" element={<Demo />} />
+          <Route path="/live-demo" element={<LiveDemo />} />
         </Routes>
       </main>
     </div>
