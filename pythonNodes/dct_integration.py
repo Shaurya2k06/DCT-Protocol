@@ -36,9 +36,10 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+from urllib.error import URLError, HTTPError
+from urllib.request import Request, urlopen
 
 from eth_account import Account
-from eth_account.messages import encode_defunct
 from web3 import Web3
 from web3.middleware import ExtraDataToPOAMiddleware
 
@@ -50,17 +51,107 @@ from trustScores import (
     parse_tlsn_attestation,
 )
 
+
+def _load_local_env_file() -> None:
+    """Load KEY=VALUE entries from .env in this directory if present."""
+    env_path = Path(__file__).with_name(".env")
+    if not env_path.exists():
+        return
+
+    for line in env_path.read_text().splitlines():
+        raw = line.strip()
+        if not raw or raw.startswith("#") or "=" not in raw:
+            continue
+        key, value = raw.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip())
+
+
+def _load_fallback_addresses() -> dict:
+    """Best-effort address fallback from deployment artifacts."""
+    base = Path(__file__).resolve().parent.parent
+    candidates = [
+        base / "contracts" / "deployment.json",
+        base / "server" / "addresses.local-anvil.json",
+        base / "server" / "addresses.json",
+    ]
+    for path in candidates:
+        if not path.exists():
+            continue
+        try:
+            data = json.loads(path.read_text())
+            contracts = data.get("contracts", {}) if isinstance(data, dict) else {}
+            return {
+                "registry": data.get("DCTRegistry") or contracts.get("DCTRegistry") or "",
+                "enforcer": data.get("DCTEnforcer") or contracts.get("DCTEnforcer") or "",
+                "verifier": data.get("NotaryAttestationVerifier")
+                or contracts.get("NotaryAttestationVerifier")
+                or "",
+            }
+        except Exception:
+            continue
+    return {"registry": "", "enforcer": "", "verifier": ""}
+
+
+_load_local_env_file()
+_ADDR_FALLBACK = _load_fallback_addresses()
+
+
+def _discover_agent_ids(default: int = 0) -> list[int]:
+    """
+    Discover agent IDs from env and deployment artifacts.
+    Priority: AGENT_TOKEN_IDS env, then known JSON files, then default.
+    """
+    discovered: list[int] = []
+
+    env_ids = os.getenv("AGENT_TOKEN_IDS", "").strip()
+    if env_ids:
+        for raw in env_ids.split(","):
+            item = raw.strip()
+            if not item:
+                continue
+            try:
+                discovered.append(int(item))
+            except ValueError:
+                pass
+
+    base = Path(__file__).resolve().parent.parent
+    candidates = [
+        base / "contracts" / "deployment.json",
+        base / "server" / "addresses.local-anvil.json",
+        base / "server" / "addresses.json",
+    ]
+    for path in candidates:
+        if not path.exists():
+            continue
+        try:
+            data = json.loads(path.read_text())
+            if not isinstance(data, dict):
+                continue
+            for raw_id in data.get("agents", []):
+                try:
+                    discovered.append(int(raw_id))
+                except (TypeError, ValueError):
+                    pass
+        except Exception:
+            continue
+
+    if not discovered:
+        return [default]
+    return sorted(set(discovered))
+
 # ---------------------------------------------------------------------------
 # Config — edit here or set environment variables
 # ---------------------------------------------------------------------------
 
 CONFIG = {
     "rpc_url":          os.getenv("RPC_URL",          "http://127.0.0.1:8545"),
-    "registry":         os.getenv("REGISTRY_ADDRESS", ""),
-    "enforcer":         os.getenv("ENFORCER_ADDRESS", ""),
-    "verifier":         os.getenv("VERIFIER_ADDRESS", ""),
+    "registry":         os.getenv("REGISTRY_ADDRESS") or _ADDR_FALLBACK["registry"],
+    "enforcer":         os.getenv("ENFORCER_ADDRESS") or _ADDR_FALLBACK["enforcer"],
+    "verifier":         os.getenv("VERIFIER_ADDRESS") or _ADDR_FALLBACK["verifier"],
     "notary_key":       os.getenv("NOTARY_PRIVATE_KEY", ""),
     "agent_key":        os.getenv("AGENT_PRIVATE_KEY",  ""),
+    "server_url":       os.getenv("DCT_SERVER_URL", "http://127.0.0.1:3000"),
+    "server_api_key":   os.getenv("TRUST_PROFILE_API_KEY", ""),
 }
 
 # ---------------------------------------------------------------------------
@@ -211,6 +302,22 @@ def connect(rpc_url: str) -> Web3:
 
 
 def get_contracts(w3: Web3) -> tuple:
+    missing = [
+        key
+        for key, value in {
+            "REGISTRY_ADDRESS": CONFIG["registry"],
+            "ENFORCER_ADDRESS": CONFIG["enforcer"],
+            "VERIFIER_ADDRESS": CONFIG["verifier"],
+        }.items()
+        if not value
+    ]
+    if missing:
+        raise ValueError(
+            "Missing contract addresses: "
+            + ", ".join(missing)
+            + ". Set them in pythonNodes/.env or deployment files."
+        )
+
     registry = w3.eth.contract(
         address = Web3.to_checksum_address(CONFIG["registry"]),
         abi     = REGISTRY_ABI,
@@ -249,9 +356,8 @@ def produce_attestation(
     packed       = b"DCT_TLSN" + tool_hash
     digest       = Web3.keccak(packed)
 
-    # Sign the raw digest (not EIP-191 prefixed — matches contract's recover())
-    account      = Account.from_key(notary_key)
-    signed       = account.sign_message(encode_defunct(digest))
+    # Contract recovers directly from this digest, so sign the digest bytes directly.
+    signed       = Account._sign_hash(digest, private_key=notary_key)
     attestation  = signed.signature
 
     print(f"  Attestation produced for tool '{tool}': {attestation.hex()[:20]}...")
@@ -448,6 +554,7 @@ def get_trust_profile(
     agent_token_id: int,
     expectations:  dict[str, TaskExpectation],
     from_block:    int = 0,
+    preloaded_events: Optional[list[ExecutionEvent]] = None,
 ) -> TrustProfile:
     """
     Full pipeline:
@@ -456,7 +563,7 @@ def get_trust_profile(
       3. Compute off-chain trust profile
       4. Print both for visibility
     """
-    events  = load_events_from_chain(w3, enforcer, from_block)
+    events = preloaded_events if preloaded_events is not None else load_events_from_chain(w3, enforcer, from_block)
     profile = compute_trust_profile(
         agent_token_id,
         events,
@@ -478,7 +585,64 @@ def get_trust_profile(
     print(f"    Max spend fraction: {profile.max_spend_fraction}")
     print(f"    On-chain score    : {on_chain_score / 1e18:.3f}x baseline")
 
+    persist_trust_profile(profile, CONFIG["server_url"], CONFIG["server_api_key"])
+
     return profile
+
+
+def persist_trust_profile(
+    profile: TrustProfile,
+    server_url: str,
+    api_key: str = "",
+) -> bool:
+    """
+    Persist the latest off-chain TrustProfile through the Node API.
+    The server route then upserts into Neon/PostgreSQL.
+    """
+    if not server_url:
+        return False
+
+    payload = {
+        "source": "python.dct_integration",
+        "profile": {
+            "composite_score": profile.composite_score,
+            "tier": profile.tier.name,
+            "signal_1": profile.signal_1,
+            "signal_2": profile.signal_2,
+            "signal_3": profile.signal_3,
+            "execution_count": profile.execution_count,
+            "max_children": profile.max_children,
+            "max_depth": profile.max_depth,
+            "max_spend_fraction": profile.max_spend_fraction,
+        },
+    }
+
+    url = f"{server_url.rstrip('/')}/api/agents/{profile.agent_id}/trust-profile"
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["x-trust-profile-key"] = api_key
+
+    req = Request(
+        url=url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+
+    try:
+        with urlopen(req, timeout=10) as resp:
+            if 200 <= resp.status < 300:
+                print(f"  Persisted trust profile to API: {url}")
+                return True
+            print(f"  Persist trust profile failed with status {resp.status}")
+            return False
+    except HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="ignore") if exc.fp else ""
+        print(f"  Persist trust profile HTTP {exc.code}: {body[:200]}")
+        return False
+    except URLError as exc:
+        print(f"  Persist trust profile network error: {exc}")
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -591,8 +755,8 @@ def run_demo():
         max_depth      = 3,
     )
 
-    # 4. Compute trust profile from chain events
-    print("\n--- Computing trust profile ---")
+    # 4. Compute trust profile(s) from chain events
+    print("\n--- Computing trust profile(s) ---")
     expectations = {
         "web_fetch": TaskExpectation(
             tool      = "web_fetch",
@@ -600,16 +764,28 @@ def run_demo():
         )
     }
 
-    profile = get_trust_profile(
-        w3             = w3,
-        registry       = registry,
-        enforcer       = enforcer,
-        agent_token_id = 0,
-        expectations   = expectations,
-        from_block     = 0,
-    )
+    events = load_events_from_chain(w3, enforcer, from_block=0)
+    agent_ids = _discover_agent_ids(default=0)
+    for event_agent_id in sorted({int(e.agent_id) for e in events}):
+        if event_agent_id not in agent_ids:
+            agent_ids.append(event_agent_id)
 
-    return profile
+    print(f"  Agent IDs to score: {agent_ids}")
+
+    profiles: list[TrustProfile] = []
+    for agent_id in agent_ids:
+        profile = get_trust_profile(
+            w3               = w3,
+            registry         = registry,
+            enforcer         = enforcer,
+            agent_token_id   = agent_id,
+            expectations     = expectations,
+            from_block       = 0,
+            preloaded_events = events,
+        )
+        profiles.append(profile)
+
+    return profiles
 
 
 if __name__ == "__main__":

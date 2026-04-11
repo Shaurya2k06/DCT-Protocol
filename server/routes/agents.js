@@ -5,6 +5,7 @@
 import express from "express";
 import { getERC8004, getRegistry, getSigner, ethers, loadAddresses } from "../lib/blockchain.js";
 import { audit } from "../lib/audit.js";
+import { getLatestTrustProfile, upsertTrustProfile } from "../lib/db.js";
 
 const router = express.Router();
 
@@ -68,15 +69,64 @@ router.get("/:tokenId/trust", async (req, res) => {
     const { tokenId } = req.params;
     const trustScoreRaw = await registry.trustScore(BigInt(tokenId));
     const maxGrantable = await registry.maxGrantableSpend(BigInt(tokenId), 50_000_000n);
+    const offChainTrustProfile = await getLatestTrustProfile(tokenId);
 
     res.json({
       tokenId,
       trustScore: ethers.formatEther(trustScoreRaw),
       trustScoreRaw: trustScoreRaw.toString(),
       maxGrantableSpend: maxGrantable.toString(),
+      offChainTrustProfile,
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+router.post("/:tokenId/trust-profile", async (req, res) => {
+  try {
+    const expectedKey = process.env.TRUST_PROFILE_API_KEY?.trim();
+    if (expectedKey) {
+      const providedKey = req.get("x-trust-profile-key")?.trim();
+      if (!providedKey || providedKey !== expectedKey) {
+        return res.status(401).json({ error: "unauthorized" });
+      }
+    }
+
+    const { tokenId } = req.params;
+    const body = req.body?.profile || req.body;
+    const required = [
+      "composite_score",
+      "tier",
+      "execution_count",
+      "max_children",
+      "max_depth",
+      "max_spend_fraction",
+    ];
+    const missing = required.filter((k) => body?.[k] == null);
+    if (missing.length > 0) {
+      return res.status(400).json({ error: `missing fields: ${missing.join(", ")}` });
+    }
+
+    const stored = await upsertTrustProfile(tokenId, body);
+    if (!stored) {
+      return res.status(503).json({ error: "database disabled or unavailable" });
+    }
+
+    await audit(
+      "trust.profile.upsert",
+      {
+        agentId: String(tokenId),
+        source: req.body?.source || "python",
+        compositeScore: body.composite_score,
+        tier: body.tier,
+      },
+      req
+    );
+
+    return res.json({ success: true, profile: stored });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
   }
 });
 
