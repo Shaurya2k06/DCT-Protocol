@@ -1,10 +1,11 @@
 import { NavLink } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Shield, Play, ExternalLink } from "lucide-react";
+import { Shield, Play, Zap, ExternalLink } from "lucide-react";
 
 const navItems = [
-  { to: "/", label: "TLSNotary", icon: Shield, end: true },
-  { to: "/demo", label: "On-chain demo", icon: Play, end: false },
+  { to: "/",          label: "TLSNotary",    icon: Shield, end: true  },
+  { to: "/live-demo", label: "Live Demo",     icon: Zap,    end: false },
+  { to: "/demo",      label: "Quick demo",   icon: Play,   end: false },
 ];
 
 export default function Sidebar() {
