@@ -1,6 +1,15 @@
 {
-  "devDependencies": {
-    "@nomicfoundation/hardhat-toolbox": "^6.1.0",
-    "hardhat": "^2.27.1"
-  }
+  "name": "@dct/contracts",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DCT Protocol Solidity — Foundry",
+  "scripts": {
+    "build": "forge build",
+    "test": "forge test",
+    "fmt": "forge fmt",
+    "export-abis": "node scripts/export-abis.mjs",
+    "deploy:local": "forge script script/DeployDCT.s.sol:DeployDCT --rpc-url http://127.0.0.1:8545 --broadcast",
+    "deploy:baseSepolia": "forge script script/DeployDCT.s.sol:DeployDCT --rpc-url \"$BASE_SEPOLIA_RPC_URL\" --broadcast --verify"
+  },
+  "license": "MIT"
 }

@@ -1,0 +1,228 @@
+{
+  "abi": [
+    {
+      "type": "constructor",
+      "inputs": [
+        {
+          "name": "_registry",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "_erc8004",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "_tlsnVerifier",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "erc8004",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "contract IERC8004Identity"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "registry",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "contract IDCTRegistry"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "tlsnVerifier",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "contract ITLSNVerifierEnforcer"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "validateAction",
+      "inputs": [
+        {
+          "name": "revocationId",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        },
+        {
+          "name": "agentTokenId",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "toolHash",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        },
+        {
+          "name": "spendAmount",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "tlsnAttestation",
+          "type": "bytes",
+          "internalType": "bytes"
+        },
+        {
+          "name": "redeemer",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "bool",
+          "internalType": "bool"
+        }
+      ],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "validateActionWithScope",
+      "inputs": [
+        {
+          "name": "revocationId",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        },
+        {
+          "name": "agentTokenId",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "toolHash",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        },
+        {
+          "name": "spendAmount",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "tlsnAttestation",
+          "type": "bytes",
+          "internalType": "bytes"
+        },
+        {
+          "name": "redeemer",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "allowedTools",
+          "type": "bytes32[]",
+          "internalType": "bytes32[]"
+        },
+        {
+          "name": "spendLimitUsdc",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "maxDepth",
+          "type": "uint8",
+          "internalType": "uint8"
+        },
+        {
+          "name": "expiresAt",
+          "type": "uint64",
+          "internalType": "uint64"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "bool",
+          "internalType": "bool"
+        }
+      ],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "event",
+      "name": "ActionRejected",
+      "inputs": [
+        {
+          "name": "revocationId",
+          "type": "bytes32",
+          "indexed": true,
+          "internalType": "bytes32"
+        },
+        {
+          "name": "agentTokenId",
+          "type": "uint256",
+          "indexed": true,
+          "internalType": "uint256"
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "indexed": false,
+          "internalType": "string"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "ActionValidated",
+      "inputs": [
+        {
+          "name": "revocationId",
+          "type": "bytes32",
+          "indexed": true,
+          "internalType": "bytes32"
+        },
+        {
+          "name": "agentTokenId",
+          "type": "uint256",
+          "indexed": true,
+          "internalType": "uint256"
+        },
+        {
+          "name": "toolHash",
+          "type": "bytes32",
+          "indexed": false,
+          "internalType": "bytes32"
+        },
+        {
+          "name": "spendAmount",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
+      ],
+      "anonymous": false
+    }
+  ]
+}

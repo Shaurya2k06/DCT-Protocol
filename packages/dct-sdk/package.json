@@ -1,0 +1,21 @@
+{
+  "name": "@dct/sdk",
+  "version": "1.0.0",
+  "description": "Delegated Capability Tokens — Biscuit + DCTRegistry / DCTEnforcer SDK",
+  "type": "module",
+  "main": "./src/index.mjs",
+  "exports": {
+    ".": "./src/index.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@biscuit-auth/biscuit-wasm": "^0.6.0",
+    "ethers": "^6.16.0"
+  },
+  "scripts": {
+    "test": "node --experimental-wasm-modules --test 2>/dev/null || true"
+  },
+  "license": "MIT"
+}

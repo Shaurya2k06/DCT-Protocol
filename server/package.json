@@ -1,19 +1,23 @@
 {
   "name": "server",
   "version": "1.0.0",
-  "main": "index.js",
+  "type": "module",
+  "main": "server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "nodemon server.js",
-    "dev": "nodemon server.js",
-    "node": "node server.js"
+    "start": "node --experimental-wasm-modules server.js",
+    "dev": "node --watch --experimental-wasm-modules server.js",
+    "node": "node --experimental-wasm-modules server.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
+  "description": "DCT Protocol Server — Delegated Capability Tokens",
   "dependencies": {
-    "express": "^5.2.1",
-    "nodemon": "^3.1.11"
+    "@dct/sdk": "file:../packages/dct-sdk",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.1",
+    "ethers": "^6.16.0",
+    "express": "^5.2.1"
   }
 }
