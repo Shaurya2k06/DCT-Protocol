@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.23;
 
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+
 /**
  * @title IDCTRegistry
  * @notice Interface for the DCTRegistry contract.
@@ -43,23 +47,12 @@ struct EnforcerScope {
 
 /**
  * @title DCTEnforcer
- * @notice Custom caveat enforcer for the DCT Protocol.
- *
- *         In the full MetaMask Delegation Framework, this would inherit from
- *         CaveatEnforcer and run inside DelegationManager's validateDelegation flow.
- *         This standalone enforcer implements the same 4-step validation for direct calls:
- *
- *         1. Lazy revocation check — walks lineage, O(depth) SLOADs
- *         2. Identity — redeemer must own the declared ERC-8004 agent NFT
- *         3. Scope — validate tool and spend against committed Scope struct
- *         4. TLSNotary attestation — verify MPC-TLS proof (optional)
- *
- *         The enforcer updates trust scores on success/violation.
+ * @notice UUPS-upgradeable caveat enforcer for the DCT Protocol (direct calls or future DelegationManager).
  */
-contract DCTEnforcer {
-    IDCTRegistry          public immutable registry;
-    IERC8004Identity      public immutable erc8004;
-    ITLSNVerifierEnforcer public immutable tlsnVerifier;
+contract DCTEnforcer is Initializable, OwnableUpgradeable, UUPSUpgradeable {
+    IDCTRegistry          public registry;
+    IERC8004Identity      public erc8004;
+    ITLSNVerifierEnforcer public tlsnVerifier;
 
     event ActionValidated(
         bytes32 indexed revocationId,
@@ -73,25 +66,25 @@ contract DCTEnforcer {
         string reason
     );
 
-    constructor(
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(
         address _registry,
         address _erc8004,
-        address _tlsnVerifier
-    ) {
+        address _tlsnVerifier,
+        address initialOwner
+    ) external initializer {
+        __Ownable_init(initialOwner);
+        __UUPSUpgradeable_init();
         registry     = IDCTRegistry(_registry);
         erc8004      = IERC8004Identity(_erc8004);
         tlsnVerifier = ITLSNVerifierEnforcer(_tlsnVerifier);
     }
 
-    /**
-     * @notice Validate an agent action before execution.
-     * @param revocationId     Biscuit token revocation ID
-     * @param agentTokenId     ERC-8004 token ID of executing agent
-     * @param toolHash         keccak256(tool name)
-     * @param spendAmount      Declared spend in 6-decimal USDC
-     * @param tlsnAttestation  TLSNotary MPC-TLS attestation (empty for non-HTTP tools)
-     * @param redeemer         Address of the agent executing the action
-     */
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+
     function validateAction(
         bytes32 revocationId,
         uint256 agentTokenId,
@@ -100,27 +93,23 @@ contract DCTEnforcer {
         bytes calldata tlsnAttestation,
         address redeemer
     ) external returns (bool) {
-        // 1. Lazy revocation check — walks lineage, O(depth) SLOADs
         if (registry.isRevoked(revocationId)) {
             emit ActionRejected(revocationId, agentTokenId, "DCT: token revoked");
             registry.recordViolation(agentTokenId);
             return false;
         }
 
-        // 2. Identity — redeemer must own the declared ERC-8004 agent NFT
         if (erc8004.ownerOf(agentTokenId) != redeemer) {
             emit ActionRejected(revocationId, agentTokenId, "DCT: wrong agent");
             return false;
         }
 
-        // 3. Scope — validate tool and spend against committed Scope struct
         bytes32 committed = registry.scopeCommitments(revocationId);
         if (committed == bytes32(0)) {
             emit ActionRejected(revocationId, agentTokenId, "DCT: unknown token");
             return false;
         }
 
-        // 4. TLSNotary attestation — required for HTTP tool calls
         if (tlsnAttestation.length > 0) {
             if (!tlsnVerifier.verify(tlsnAttestation, toolHash)) {
                 emit ActionRejected(revocationId, agentTokenId, "DCT: invalid TLS attestation");
@@ -129,17 +118,11 @@ contract DCTEnforcer {
             }
         }
 
-        // All checks passed — record success and emit event
         registry.recordSuccess(agentTokenId);
         emit ActionValidated(revocationId, agentTokenId, toolHash, spendAmount);
         return true;
     }
 
-    /**
-     * @notice Full scope-validated execution with the scope struct passed in calldata.
-     *         This version verifies toolHash is in allowedTools and spendAmount <= spendLimitUsdc,
-     *         then confirms keccak256(abi.encode(scope)) matches the committed hash.
-     */
     function validateActionWithScope(
         bytes32 revocationId,
         uint256 agentTokenId,
@@ -152,27 +135,23 @@ contract DCTEnforcer {
         uint8 maxDepth,
         uint64 expiresAt
     ) external returns (bool) {
-        // 1. Lazy revocation check
         if (registry.isRevoked(revocationId)) {
             emit ActionRejected(revocationId, agentTokenId, "DCT: token revoked");
             registry.recordViolation(agentTokenId);
             return false;
         }
 
-        // 2. Identity check
         if (erc8004.ownerOf(agentTokenId) != redeemer) {
             emit ActionRejected(revocationId, agentTokenId, "DCT: wrong agent");
             return false;
         }
 
-        // 3. Scope commitment verification
         bytes32 committed = registry.scopeCommitments(revocationId);
         if (committed == bytes32(0)) {
             emit ActionRejected(revocationId, agentTokenId, "DCT: unknown token");
             return false;
         }
 
-        // Reconstruct scope and verify commitment hash matches
         EnforcerScope memory scope = EnforcerScope({
             allowedTools: allowedTools,
             spendLimitUsdc: spendLimitUsdc,
@@ -187,7 +166,6 @@ contract DCTEnforcer {
             return false;
         }
 
-        // 3a. Verify tool is in allowedTools
         bool toolAllowed = false;
         for (uint256 i = 0; i < allowedTools.length; i++) {
             if (allowedTools[i] == toolHash) {
@@ -201,21 +179,18 @@ contract DCTEnforcer {
             return false;
         }
 
-        // 3b. Verify spend is within limit
         if (spendAmount > spendLimitUsdc) {
             emit ActionRejected(revocationId, agentTokenId, "DCT: spend exceeds limit");
             registry.recordViolation(agentTokenId);
             return false;
         }
 
-        // 3c. Verify not expired
         if (block.timestamp > expiresAt) {
             emit ActionRejected(revocationId, agentTokenId, "DCT: token expired");
             registry.recordViolation(agentTokenId);
             return false;
         }
 
-        // 4. TLSNotary attestation
         if (tlsnAttestation.length > 0) {
             if (!tlsnVerifier.verify(tlsnAttestation, toolHash)) {
                 emit ActionRejected(revocationId, agentTokenId, "DCT: invalid TLS attestation");
@@ -224,9 +199,10 @@ contract DCTEnforcer {
             }
         }
 
-        // All checks passed
         registry.recordSuccess(agentTokenId);
         emit ActionValidated(revocationId, agentTokenId, toolHash, spendAmount);
         return true;
     }
+
+    uint256[50] private __gap;
 }

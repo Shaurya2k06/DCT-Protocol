@@ -1,2 +1,12 @@
 forge-std/=lib/forge-std/src/
 @openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/
+
+@account-abstraction/=lib/delegation-framework/lib/account-abstraction/contracts/
+@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/
+@solidity-stringutils/=lib/delegation-framework/lib/solidity-stringutils/src/
+@bytes-utils/=lib/delegation-framework/lib/solidity-bytes-utils/contracts/
+@FCL/=lib/delegation-framework/lib/FCL/solidity/src/
+@erc7579/=lib/delegation-framework/lib/erc7579-implementation/src/
+@SCL/=lib/delegation-framework/lib/SCL/src/
+FreshCryptoLib/=lib/delegation-framework/lib/FreshCryptoLib/solidity/src/
+delegation-framework/=lib/delegation-framework/src/

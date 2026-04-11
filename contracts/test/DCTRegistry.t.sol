@@ -2,6 +2,7 @@
 pragma solidity 0.8.23;
 
 import {Test} from "forge-std/Test.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {DCTRegistry, Scope} from "../src/DCTRegistry.sol";
 import {DCTEnforcer} from "../src/DCTEnforcer.sol";
 import {NotaryAttestationVerifier} from "../src/NotaryAttestationVerifier.sol";
@@ -32,9 +33,40 @@ contract DCTRegistryTest is Test {
         a3 = address(0x3);
 
         erc8004 = new TestAgentRegistry();
-        tlsn = new NotaryAttestationVerifier(notaryAddr);
-        registry = new DCTRegistry(address(erc8004));
-        enforcer = new DCTEnforcer(address(registry), address(erc8004), address(tlsn));
+
+        NotaryAttestationVerifier notaryImpl = new NotaryAttestationVerifier();
+        tlsn = NotaryAttestationVerifier(
+            address(
+                new ERC1967Proxy(
+                    address(notaryImpl),
+                    abi.encodeCall(NotaryAttestationVerifier.initialize, (notaryAddr, address(this)))
+                )
+            )
+        );
+
+        DCTRegistry regImpl = new DCTRegistry();
+        registry = DCTRegistry(
+            address(
+                new ERC1967Proxy(
+                    address(regImpl),
+                    abi.encodeCall(DCTRegistry.initialize, (address(erc8004), address(this)))
+                )
+            )
+        );
+
+        DCTEnforcer enfImpl = new DCTEnforcer();
+        enforcer = DCTEnforcer(
+            address(
+                new ERC1967Proxy(
+                    address(enfImpl),
+                    abi.encodeCall(
+                        DCTEnforcer.initialize,
+                        (address(registry), address(erc8004), address(tlsn), address(this))
+                    )
+                )
+            )
+        );
+
         registry.setEnforcer(address(enforcer));
 
         vm.prank(a1);

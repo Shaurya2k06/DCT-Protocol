@@ -2,14 +2,15 @@
 
 Contracts in this repo use **Foundry** (`forge build`, `forge test`).
 
-`DCTEnforcer.sol` is a **standalone** contract suitable for direct calls from the Node SDK. To attach the same rules inside MetaMask’s DelegationManager, add the upstream package and a thin caveat wrapper:
+`DCTEnforcer.sol` is a **standalone** contract suitable for direct calls from the Node SDK.
+
+**Installed:** `lib/delegation-framework` (v1.3.x) with remappings merged in `remappings.txt` (DCT contracts keep using `lib/openzeppelin-contracts`).
+
+**Stub adapter:** `src/integrations/DCTCaveatEnforcer.sol` inherits MetaMask’s `CaveatEnforcer`. Extend it with `beforeHook` / `afterHook` and `abi.decode` the same `terms` layout you pass from the delegation toolkit.
 
 ```bash
 cd contracts
 forge install MetaMask/delegation-framework@v1.3.0
-# merge remappings from delegation-framework/remappings.txt into foundry.toml
 ```
 
-Then implement a contract that inherits `CaveatEnforcer` from `lib/delegation-framework`, override `beforeHook`, and `abi.decode` the same `terms` layout you pass from `@metamask/delegation-toolkit`.
-
-This repository ships **DCTRegistry + DCTEnforcer** first; DelegationManager wiring is deployment-specific.
+This repository ships **DCTRegistry + DCTEnforcer** first; full DelegationManager wiring is deployment-specific.

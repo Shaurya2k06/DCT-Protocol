@@ -1,24 +1,33 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.23;
 
-import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 /**
  * @title NotaryAttestationVerifier
- * @notice Cryptographic verification (not a stub): recovers signer from a 65-byte ECDSA
- *         signature over digest = keccak256(abi.encodePacked("DCT_TLSN", expectedEndpointHash)).
- *         The SDK must produce the same digest and sign with `notarySigner`'s private key
- *         (e.g. TLSNotary notary key or your delegated attestation service).
+ * @notice UUPS-upgradeable. Recovers signer from a 65-byte ECDSA signature over
+ *         digest = keccak256(abi.encodePacked("DCT_TLSN", expectedEndpointHash)).
  */
-contract NotaryAttestationVerifier {
+contract NotaryAttestationVerifier is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     using ECDSA for bytes32;
 
-    address public immutable notarySigner;
+    address public notarySigner;
 
-    constructor(address _notarySigner) {
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(address _notarySigner, address initialOwner) external initializer {
+        __Ownable_init(initialOwner);
+        __UUPSUpgradeable_init();
         require(_notarySigner != address(0), "DCT: zero notary");
         notarySigner = _notarySigner;
     }
+
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
     function verify(bytes calldata attestation, bytes32 expectedEndpointHash)
         external
@@ -30,4 +39,6 @@ contract NotaryAttestationVerifier {
         address recovered = digest.recover(attestation);
         return recovered == notarySigner;
     }
+
+    uint256[50] private __gap;
 }

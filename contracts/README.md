@@ -13,7 +13,9 @@ forge test
 node scripts/export-abis.mjs   # copy ABIs → ../client/src/abi and ../server/abi
 ```
 
-## Deploy
+## Deploy (UUPS proxies)
+
+Contracts are **UUPS-upgradeable** (implementations + `ERC1967Proxy`). Upgrade authority is the **deployer** (`Ownable` on each implementation).
 
 Set `PRIVATE_KEY` (uint256 hex). For Base Sepolia production, set `ERC8004_IDENTITY_REGISTRY`. For local test registry, set `DEPLOY_LOCAL_IDENTITY_REGISTRY=true`.
 
@@ -24,7 +26,9 @@ forge script script/DeployDCT.s.sol:DeployDCT --rpc-url $BASE_SEPOLIA_RPC_URL --
 
 Optional: `NOTARY_SIGNER_ADDRESS` (defaults to deployer).
 
-After deploy, update `client/src/addresses.json` and `server/addresses.json` from the broadcast output under `broadcast/`.
+After deploy, use **proxy addresses** from the script logs for `client/src/addresses.json` and `server/addresses.json` (not the implementation addresses). For a second network, copy to `server/addresses.local.json` and set `ADDRESSES_FILE` and `RPC_URL` accordingly.
+
+Upgrades (owner only): call `upgradeToAndCall` on the proxy via the implementation’s `UUPSUpgradeable` interface, or use OpenZeppelin upgrades tooling.
 
 ## MetaMask Delegation Framework
 

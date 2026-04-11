@@ -9,7 +9,8 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { initRootKey } from "./lib/dct-sdk.js";
-import { wireDCTSdk } from "./lib/blockchain.js";
+import { wireDCTSdk, loadAddresses } from "./lib/blockchain.js";
+import { initDb, getPool } from "./lib/db.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -17,9 +18,6 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(cors());
 app.use(express.json());
-
-wireDCTSdk();
-initRootKey();
 
 // Routes
 import delegationRoutes from "./routes/delegation.js";
@@ -32,12 +30,22 @@ app.use("/api/biscuit", biscuitRoutes);
 
 // Health check
 app.get("/", (req, res) => {
+  const addrs = loadAddresses();
+  const rpcMode = process.env.RPC_URL?.trim()
+    ? "RPC_URL"
+    : process.env.ALCHEMY_API_KEY
+      ? "alchemy-base-sepolia"
+      : "unset";
+  const pool = getPool();
   res.json({
     name: "DCT Protocol Server",
     version: "1.0.0",
     status: "running",
     biscuit: "Eclipse Biscuit WASM v0.6.0 — real Ed25519 tokens",
-    chain: "Base Sepolia (84532)",
+    chainId: addrs.chainId,
+    network: addrs.network,
+    rpcMode,
+    database: pool ? "connected" : process.env.DATABASE_URL ? "error" : "disabled",
     endpoints: [
       "GET  /api/agents",
       "GET  /api/agents/:tokenId/trust",
@@ -58,13 +66,32 @@ app.get("/", (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`\n═══════════════════════════════════════════`);
-  console.log(`  DCT Protocol Server — Port ${PORT}`);
-  console.log(`═══════════════════════════════════════════`);
-  console.log(`  Biscuit:  Eclipse Biscuit WASM v0.6.0`);
-  console.log(`  Chain:    Base Sepolia via Alchemy`);
-  console.log(`  SDK:      delegate() · execute() · revoke()`);
-  console.log(`  API:      http://localhost:${PORT}`);
-  console.log(`═══════════════════════════════════════════\n`);
-});
+async function start() {
+  try {
+    await initDb();
+    if (getPool()) {
+      console.log("  Database: PostgreSQL (Neon) ready");
+    }
+  } catch (e) {
+    console.warn("  Database: init failed —", e.message);
+  }
+
+  wireDCTSdk();
+  initRootKey();
+
+  app.listen(PORT, () => {
+    console.log(`\n═══════════════════════════════════════════`);
+    console.log(`  DCT Protocol Server — Port ${PORT}`);
+    console.log(`═══════════════════════════════════════════`);
+    console.log(`  Biscuit:  Eclipse Biscuit WASM v0.6.0`);
+    const rpcLabel = process.env.RPC_URL?.trim()
+      ? "custom RPC_URL"
+      : "Base Sepolia (Alchemy)";
+    console.log(`  Chain:    ${rpcLabel}`);
+    console.log(`  SDK:      delegate() · execute() · revoke()`);
+    console.log(`  API:      http://localhost:${PORT}`);
+    console.log(`═══════════════════════════════════════════\n`);
+  });
+}
+
+start();
