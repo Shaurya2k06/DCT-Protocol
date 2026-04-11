@@ -8,7 +8,8 @@
     "start": "node --experimental-wasm-modules server.js",
     "dev": "node --watch --experimental-wasm-modules server.js",
     "node": "node --experimental-wasm-modules server.js",
-    "demo:onchain": "node --experimental-wasm-modules scripts/demo-onchain.mjs"
+    "demo:onchain": "node --experimental-wasm-modules scripts/demo-onchain.mjs",
+    "tlsn-prover": "node scripts/tlsn-dev-prover.mjs"
   },
   "keywords": [],
   "author": "",

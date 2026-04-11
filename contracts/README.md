@@ -1,5 +1,7 @@
 # DCT Protocol contracts (Foundry)
 
+**Local Anvil workflow (Step 2 / Step 3):** see [`../docs/LOCAL_DEV.md`](../docs/LOCAL_DEV.md).
+
 ## Prerequisites
 
 - [Foundry](https://book.getfoundry.sh/getting-started/installation)
@@ -55,7 +57,25 @@ node scripts/sync-addresses-from-broadcast.mjs --chain 31337
 
 Use **proxy addresses** from logs or the sync script (not implementation addresses). For a second network, set `ADDRESSES_FILE` and matching `RPC_URL`.
 
-Upgrades (owner only): call `upgradeToAndCall` on the proxy via the implementation’s `UUPSUpgradeable` interface, or use OpenZeppelin upgrades tooling.
+### Upgrade DCTEnforcer (UUPS)
+
+After pulling a new `DCTEnforcer` implementation (e.g. `validateAction` deprecated), upgrade the **proxy** (owner = deployer wallet):
+
+```bash
+export PRIVATE_KEY=0x...   # same owner that deployed
+export DCT_ENFORCER_PROXY=0x256a633fa2c990a64ec4adf79685f59490a241f8   # from addresses.json
+# RPC: same as deploy
+./scripts/upgrade-dct-enforcer-base-sepolia.sh
+```
+
+Or manually:
+
+```bash
+forge script script/UpgradeDCTEnforcer.s.sol:UpgradeDCTEnforcer \
+  --rpc-url "$BASE_SEPOLIA_RPC_URL" --broadcast
+```
+
+Other upgrades (owner only): same pattern — deploy new implementation, `upgradeToAndCall` on the proxy; see `script/UpgradeNotaryVerifier.s.sol`.
 
 ## MetaMask Delegation Framework
 
