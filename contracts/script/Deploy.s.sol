@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.23;
+pragma solidity 0.8.23;
 
 import "forge-std/Script.sol";
-import "../src/mocks/TestAgentRegistry.sol";
+import "../src/TestAgentRegistry.sol";
 import "../src/DCTRegistry.sol";
 import "../src/DCTEnforcer.sol";
 import "../src/NotaryAttestationVerifier.sol";
