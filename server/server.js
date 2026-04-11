@@ -29,6 +29,7 @@ import aaRoutes from "./routes/aa.js";
 import integrationsDelegationRoutes from "./routes/integrations-delegation.js";
 import tlsnRoutes from "./routes/tlsn.js";
 import demoApiRoutes from "./routes/demo-api.js";
+import layerWorkflowRoutes from "./routes/layer-workflow.js";
 
 app.use("/api/config", configRoutes);
 app.use("/api/integrations", integrationsDelegationRoutes);
@@ -37,6 +38,8 @@ app.use("/api/aa", aaRoutes);
 app.use("/api/delegation", delegationRoutes);
 app.use("/api/agents", agentRoutes);
 app.use("/api/biscuit", biscuitRoutes);
+// Operator console — workflow snapshot (no secrets)
+app.use("/api/layer", layerWorkflowRoutes);
 // Demo-facing API surface (health checks + endpoint aliases)
 app.use("/api", demoApiRoutes);
 
@@ -83,6 +86,8 @@ app.get("/", (req, res) => {
     rpcMode,
     database: pool ? "connected" : process.env.DATABASE_URL ? "error" : "disabled",
     endpoints: [
+      "GET  /api/layer/snapshot              ← Operator workflow (no secrets)",
+      "POST /api/layer/snapshot",
       "GET  /api/config",
       "GET  /api/integrations/delegation-framework  ← ERC-7710 / EntryPoint / caveat addresses",
       "GET  /api/tlsn/config                        ← TLSNotary backend status + oracle address",
