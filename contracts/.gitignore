@@ -1,3 +1,8 @@
 out/
 cache/
 broadcast/
+
+# Local secrets — use .env.example for templates
+.env
+.env.*
+!.env.example

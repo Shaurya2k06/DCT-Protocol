@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ReactFlow,
@@ -11,7 +11,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import {
   GitBranch, ShieldOff, ShieldCheck, Plus, Loader2,
-  ChevronDown, Zap, AlertTriangle,
+  Zap, AlertTriangle,
 } from "lucide-react";
 import Header from "../components/layout/Header";
 import { getDelegationTree, registerDelegation, revokeDelegation, getAgents } from "../lib/api";
@@ -108,6 +108,7 @@ export default function Delegations() {
     getAgents()
       .then((d) => setAgents(d.agents))
       .catch(console.error);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only initial fetch
   }, []);
 
   async function fetchTree() {
@@ -130,14 +131,10 @@ export default function Delegations() {
       const roots = data.nodes.filter(
         (n) => n.parentId === ethers.ZeroHash
       );
-      const children = data.nodes.filter(
-        (n) => n.parentId !== ethers.ZeroHash
-      );
 
       // Position nodes in a tree layout
       const flowNodes = [];
       const flowEdges = [];
-      let xOffset = 0;
 
       function layoutNode(node, x, y, depth) {
         flowNodes.push({

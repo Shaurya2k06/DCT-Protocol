@@ -6,7 +6,7 @@ import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 
 /**
  * @title TestAgentRegistry
- * @notice Local / Hardhat-only minimal ERC-721 used in unit tests. Production uses the
+ * @notice Local / test-only minimal ERC-721 (e.g. Anvil). Production uses the
  *         canonical ERC-8004 Identity Registry on Base (see deploy script & addresses).
  */
 contract TestAgentRegistry is ERC721, ERC721URIStorage {

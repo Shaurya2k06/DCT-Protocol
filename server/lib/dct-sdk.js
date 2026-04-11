@@ -1,5 +1,5 @@
 /**
- * Re-exports the canonical @dct/sdk package (Biscuit + on-chain DCT).
+ * Re-exports the canonical @shaurya2k06/dctsdk package (Biscuit + on-chain DCT).
  * Host wiring: `wireDCTSdk()` in blockchain.js (called from server.js).
  */
-export * from "@dct/sdk";
+export * from "@shaurya2k06/dctsdk";

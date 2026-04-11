@@ -4,7 +4,7 @@
   "type": "module",
   "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --experimental-wasm-modules --test",
     "start": "node --experimental-wasm-modules server.js",
     "dev": "node --watch --experimental-wasm-modules server.js",
     "node": "node --experimental-wasm-modules server.js"
@@ -14,7 +14,7 @@
   "license": "ISC",
   "description": "DCT Protocol Server — Delegated Capability Tokens",
   "dependencies": {
-    "@dct/sdk": "file:../packages/dct-sdk",
+    "@shaurya2k06/dctsdk": "^1.0.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.1",
     "ethers": "^6.16.0",

@@ -13,7 +13,7 @@ export const getAgents = () => api.get("/api/agents").then((r) => r.data);
 export const getAgentTrust = (tokenId) =>
   api.get(`/api/agents/${tokenId}/trust`).then((r) => r.data);
 /** @param {{ uri?: string, agentURI?: string, ownerAddress?: string } | string} opts */
-export const registerAgent = (opts, legacyOwner, legacyUri) => {
+export const registerAgent = (opts, legacyOwner) => {
   if (typeof opts === "string") {
     return api
       .post("/api/agents/register", {

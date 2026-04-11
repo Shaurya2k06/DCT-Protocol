@@ -1,0 +1,44 @@
+# Secrets and local env (never commit)
+.env
+.env.*
+!.env.example
+!.env*.example
+*.pem
+*.key
+!*.key.example
+
+# Dependencies
+node_modules/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+*~
+.cursorignore
+
+# Build / cache (common across JS + Solidity tooling)
+dist/
+dist-ssr/
+build/
+.cache/
+coverage/
+*.tsbuildinfo
+
+# Foundry / Solidity build artifacts (also see contracts/.gitignore)
+out/
+cache/
+broadcast/

@@ -1,12 +1,15 @@
 {
-  "name": "@dct/sdk",
+  "name": "@shaurya2k06/dctsdk",
   "version": "1.0.0",
-  "description": "Delegated Capability Tokens — Biscuit + DCTRegistry / DCTEnforcer SDK",
+  "description": "Delegated Capability Tokens — Eclipse Biscuit + DCT on-chain validation",
   "type": "module",
   "main": "./src/index.mjs",
   "exports": {
     ".": "./src/index.mjs"
   },
+  "files": [
+    "src"
+  ],
   "engines": {
     "node": ">=20"
   },
@@ -17,5 +20,16 @@
   "scripts": {
     "test": "node --experimental-wasm-modules --test 2>/dev/null || true"
   },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "dct",
+    "delegation",
+    "biscuit",
+    "erc-8004",
+    "ethereum",
+    "ethers"
+  ],
   "license": "MIT"
 }

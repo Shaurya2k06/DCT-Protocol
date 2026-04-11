@@ -2,7 +2,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Play, CheckCircle2, XCircle, Loader2, ChevronRight,
-  Users, GitBranch, ShieldCheck, ShieldOff, Zap,
+  Users, GitBranch, ShieldCheck, ShieldOff,
   RotateCcw, Clock,
 } from "lucide-react";
 import Header from "../components/layout/Header";

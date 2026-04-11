@@ -47,8 +47,7 @@ struct EnforcerScope {
  *
  *         In the full MetaMask Delegation Framework, this would inherit from
  *         CaveatEnforcer and run inside DelegationManager's validateDelegation flow.
- *         For hackathon deployment via Hardhat (without Foundry remappings),
- *         this is a standalone enforcer that implements the same 4-step validation:
+ *         This standalone enforcer implements the same 4-step validation for direct calls:
  *
  *         1. Lazy revocation check — walks lineage, O(depth) SLOADs
  *         2. Identity — redeemer must own the declared ERC-8004 agent NFT

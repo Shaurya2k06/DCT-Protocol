@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Users, Shield, TrendingUp, ExternalLink, Plus, Loader2,
+  Users, Shield, ExternalLink, Plus, Loader2,
 } from "lucide-react";
 import Header from "../components/layout/Header";
 import { getAgents, registerAgent } from "../lib/api";

@@ -6,9 +6,10 @@ import { ethers } from "ethers";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { setDCTContext } from "@dct/sdk";
+import { setDCTContext } from "@shaurya2k06/dctsdk";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const SERVER_ROOT = path.join(__dirname, "..");
 
 let provider;
 let signer;
@@ -16,13 +17,18 @@ const contracts = {};
 
 export function getProvider() {
   if (!provider) {
-    const alchemyKey = process.env.ALCHEMY_API_KEY;
-    if (!alchemyKey) {
-      throw new Error("ALCHEMY_API_KEY is required for RPC");
+    const rpcUrl = process.env.RPC_URL?.trim();
+    if (rpcUrl) {
+      provider = new ethers.JsonRpcProvider(rpcUrl);
+    } else {
+      const alchemyKey = process.env.ALCHEMY_API_KEY;
+      if (!alchemyKey) {
+        throw new Error("Set RPC_URL or ALCHEMY_API_KEY for JSON-RPC access");
+      }
+      provider = new ethers.JsonRpcProvider(
+        `https://base-sepolia.g.alchemy.com/v2/${alchemyKey}`
+      );
     }
-    provider = new ethers.JsonRpcProvider(
-      `https://base-sepolia.g.alchemy.com/v2/${alchemyKey}`
-    );
   }
   return provider;
 }
@@ -41,24 +47,48 @@ export function getSigner() {
 function loadABI(contractName) {
   const abiPath = path.join(__dirname, "..", "abi", `${contractName}.json`);
   if (!fs.existsSync(abiPath)) {
-    throw new Error(`ABI not found: ${abiPath}. Run: npx hardhat run scripts/deploy-dct.js --network baseSepolia`);
+    throw new Error(
+      `ABI not found: ${abiPath}. Run: cd contracts && forge build && node scripts/export-abis.mjs`
+    );
   }
   return JSON.parse(fs.readFileSync(abiPath, "utf-8"));
 }
 
+const ADDRESS_KEY = {
+  DCTRegistry: "DCTRegistry",
+  DCTEnforcer: "DCTEnforcer",
+  IdentityRegistry: "ERC8004IdentityRegistry",
+};
+
+function resolveAddressesPath() {
+  const envFile = process.env.ADDRESSES_FILE?.trim();
+  if (!envFile) {
+    return path.join(SERVER_ROOT, "addresses.json");
+  }
+  return path.isAbsolute(envFile)
+    ? envFile
+    : path.join(SERVER_ROOT, envFile);
+}
+
 export function loadAddresses() {
-  const addressPath = path.join(__dirname, "..", "addresses.json");
+  const addressPath = resolveAddressesPath();
   if (!fs.existsSync(addressPath)) {
-    throw new Error("addresses.json missing — deploy contracts first.");
+    throw new Error(
+      `Addresses file missing: ${addressPath}. Deploy contracts and copy addresses, or set ADDRESSES_FILE.`
+    );
   }
   return JSON.parse(fs.readFileSync(addressPath, "utf-8"));
 }
 
 function getContract(contractName) {
   if (!contracts[contractName]) {
-    const { abi, address } = loadABI(contractName);
+    const j = loadABI(contractName);
+    const abi = j.abi ?? j;
+    const addrs = loadAddresses();
+    const key = ADDRESS_KEY[contractName] || contractName;
+    const address = j.address || addrs[key];
     if (!address) {
-      throw new Error(`No address in abi file for ${contractName}`);
+      throw new Error(`No address for ${contractName} — set ${key} in addresses.json`);
     }
     contracts[contractName] = new ethers.Contract(address, abi, getSigner());
   }
