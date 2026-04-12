@@ -14,6 +14,7 @@ import {
   Sparkles,
   Zap,
 } from "lucide-react";
+import dctLogo from "../assets/dct_logo.svg";
 
 const fadeUp = (delay = 0) => ({
   initial: { opacity: 0, y: 16 },
@@ -442,7 +443,7 @@ export default function Landing() {
         <div className="mx-auto flex h-16 w-full max-w-[1280px] items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-8">
             <Link to="/" className="inline-flex items-center gap-2 text-nb-ink active:scale-[0.99]">
-              <Zap className="h-5 w-5 text-nb-accent" />
+              <img src={dctLogo} alt="DCT Protocol logo" className="h-7 w-auto" />
               <span className="font-display text-2xl font-bold tracking-tight">DCT Protocol</span>
             </Link>
             <nav className="hidden items-center gap-2 md:flex">
