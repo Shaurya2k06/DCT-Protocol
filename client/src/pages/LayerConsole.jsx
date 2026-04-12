@@ -9,12 +9,15 @@ import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Save, Plus, Trash2, Link2, Loader2, CheckCircle2, AlertCircle,
-  LayoutGrid, Server, Play, Wand2, Workflow,
+  LayoutGrid, Server, Play, Wand2, Workflow, Shield, TrendingUp,
+  ExternalLink,
 } from "lucide-react";
 import LayerWorkflowCanvas from "../components/layer/LayerWorkflowCanvas";
 import {
   getLayerSnapshot,
   saveLayerSnapshot,
+  applyLayerOnChain,
+  proveTlsn,
 } from "../lib/api";
 import {
   getOpenClawPem,
@@ -32,6 +35,7 @@ import {
 import { DCT_API_BASE } from "../lib/dctApiBase.js";
 import { getLayerDemoAutofill } from "../lib/layerDemoEnv";
 import { setPendingLiveDemoE2E } from "../lib/liveDemoTrigger";
+import { BTC_TLS_DEMO_URL } from "../lib/btcTlsOpenClaw.js";
 
 /** Stable key for localStorage bearer (each OpenClaw tunnel can differ). */
 function bearerKeyForAgentNode(node) {
@@ -99,6 +103,89 @@ const DEFAULT_EDGES = [
   { id: "e3", source: "dc-a2", target: "dc-a3", animated: true },
 ];
 
+const BASESCAN_TX = "https://sepolia.basescan.org/tx/";
+
+/** Expected phases while POST /api/layer/apply is in flight (server runs these sequentially). */
+const APPLY_EXPECTED_PHASES = [
+  "ERC-8004 · register orchestrator, research, payment (3 transactions)",
+  "Root Biscuit · mint off-chain root token + scope",
+  "DCTRegistry · delegate() Orchestrator → Research",
+  "DCTRegistry · delegate() Research → Payment",
+];
+
+function shortHash(h) {
+  if (!h || typeof h !== "string") return "—";
+  return h.length > 18 ? `${h.slice(0, 10)}…${h.slice(-6)}` : h;
+}
+
+function TxHashLink({ hash, className = "" }) {
+  if (!hash) return null;
+  return (
+    <a
+      href={`${BASESCAN_TX}${hash}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`inline-flex items-center gap-1 font-mono text-[11px] text-nb-accent-2 hover:underline ${className}`}
+      title={hash}
+    >
+      {shortHash(hash)}
+      <ExternalLink className="w-3 h-3 shrink-0 opacity-70" />
+    </a>
+  );
+}
+
+/** @param {Record<string, unknown>} s */
+function describeApplyStep(s) {
+  const step = s.step;
+  if (step === "erc8004.register") {
+    return {
+      title: `ERC-8004 register · ${s.slot}`,
+      lines: [
+        `Agent ID ${s.agentId}`,
+        s.blockNumber != null ? `Block ${s.blockNumber}` : null,
+      ].filter(Boolean),
+      txHash: s.txHash ?? null,
+    };
+  }
+  if (step === "biscuit.root") {
+    return {
+      title: "Root Biscuit minted (off-chain)",
+      lines: [
+        s.revocationId ? `revocationId ${String(s.revocationId).slice(0, 24)}…` : null,
+        s.scopeHash ? `scopeHash ${String(s.scopeHash).slice(0, 20)}…` : null,
+      ].filter(Boolean),
+      txHash: null,
+    };
+  }
+  if (step === "delegate.O_to_R") {
+    return {
+      title: "DCTRegistry · delegate Orchestrator → Research",
+      lines: [
+        s.childRevocationId
+          ? `Child revocationId ${String(s.childRevocationId).slice(0, 20)}…`
+          : null,
+      ].filter(Boolean),
+      txHash: s.txHash,
+    };
+  }
+  if (step === "delegate.R_to_P") {
+    return {
+      title: "DCTRegistry · delegate Research → Payment",
+      lines: [
+        s.childRevocationId
+          ? `Child revocationId ${String(s.childRevocationId).slice(0, 20)}…`
+          : null,
+      ].filter(Boolean),
+      txHash: s.txHash,
+    };
+  }
+  return {
+    title: String(step || "step"),
+    lines: [JSON.stringify(s)],
+    txHash: s.txHash ?? null,
+  };
+}
+
 function migrateAgentNodes(nodes) {
   return nodes.map((n) => {
     if (n.type !== "dctAgent") return n;
@@ -131,7 +218,16 @@ export default function LayerConsole() {
   const [testing, setTesting] = useState(false);
   const [chainBusy, setChainBusy] = useState(false);
   const [chainLog, setChainLog] = useState([]);
+  /** TLSNotary (BTC API) + OpenClaw interpretation log */
+  const [tlsBtcLog, setTlsBtcLog] = useState([]);
+  const [btcTlsBusy, setBtcTlsBusy] = useState(false);
   const [msg, setMsg] = useState(null);
+  /** From POST /api/layer/apply + snapshot — ERC-8004 id + OpenClaw URL per slot */
+  const [layerBindings, setLayerBindings] = useState(null);
+  const [appliedAt, setAppliedAt] = useState(null);
+  const [applying, setApplying] = useState(false);
+  /** Register & delegate: running | completed steps + tx hashes | error */
+  const [applyRun, setApplyRun] = useState(null);
 
   useEffect(() => {
     setPemText(getOpenClawPem());
@@ -148,6 +244,8 @@ export default function LayerConsole() {
         setAuthMode(["none", "bearer", "mtls"].includes(s.openClaw?.authMode)
           ? s.openClaw.authMode
           : "none");
+        setLayerBindings(s.agentBindings ?? null);
+        setAppliedAt(s.appliedAt ?? null);
         if (s.workflow?.nodes?.length) {
           setNodes(migrateAgentNodes(s.workflow.nodes));
           setEdges(s.workflow.edges?.length ? s.workflow.edges : []);
@@ -338,6 +436,83 @@ export default function LayerConsole() {
     }
   };
 
+  const handleBtcTlsOpenClaw = async () => {
+    persistLocalSecrets();
+    setBtcTlsBusy(true);
+    setTlsBtcLog([]);
+    setMsg(null);
+    try {
+      setTlsBtcLog((l) => [
+        ...l,
+        `→ TLSNotary: GET ${BTC_TLS_DEMO_URL}`,
+        "  (DCT server runs MPC-TLS prover — needs TLSN_PROVER_URL + notary)",
+      ]);
+      const tls = await proveTlsn({
+        url: BTC_TLS_DEMO_URL,
+        toolName: "web_fetch",
+        method: "GET",
+      });
+      const preview = String(tls.proof?.responsePreview ?? "").slice(0, 2_500);
+      const sh = tls.proof?.sessionHash;
+      const shortHash = sh && typeof sh === "string" ? `${sh.slice(0, 18)}…` : "—";
+      setTlsBtcLog((l) => [
+        ...l,
+        `✓ TLS verified · HTTP ${tls.proof?.statusCode ?? "?"} · session ${shortHash}`,
+        `  backend: ${tls.proof?.backend ?? "?"} · oracle ${tls.oracle ? String(tls.oracle).slice(0, 14) + "…" : "—"}`,
+        `  response preview (truncated):\n${preview.slice(0, 800)}${preview.length > 800 ? "…" : ""}`,
+      ]);
+
+      const ordered = orderWorkflowAgents(nodes, edges);
+      const research =
+        ordered.find((a) => a.data?.agentSlot === "research") || ordered[0];
+      if (!research) {
+        throw new Error("Add at least one agent node (prefer Research) with OpenClaw URL + bearer.");
+      }
+      const { base, bearer: tok, model } = resolveAgentConnection(research);
+      if (!base) throw new Error("Set OpenClaw base URL for the research agent (or global default).");
+      if (!tok) throw new Error("Set bearer token for that agent.");
+
+      const prompt = [
+        "You are a research agent. The following HTTP response was fetched over real TLS and verified by TLSNotary on the DCT server (session hash attested for DCTEnforcer).",
+        "",
+        "Verified response body:",
+        preview || "(empty)",
+        "",
+        "Reply in 2–3 sentences: current Bitcoin price in USD if present in the JSON (e.g. bitcoin.usd from CoinGecko), and note that the TLS session was proved, not hallucinated.",
+      ].join("\n");
+
+      setTlsBtcLog((l) => [...l, "", `→ OpenClaw (${research.data?.title || "agent"}): summarize verified data…`]);
+      const chat = await postOpenClawChat({
+        baseUrl: base,
+        bearer: tok,
+        model,
+        messages: [{ role: "user", content: prompt }],
+      });
+      const reply = pickAssistantText(chat);
+      setTlsBtcLog((l) => [...l, `← OpenClaw: ${reply}`]);
+      setMsg({
+        type: "ok",
+        text: "TLSNotary proof + OpenClaw interpretation complete. Use Live demo for on-chain enforcer + same attestation.",
+      });
+    } catch (e) {
+      const err =
+        e?.response?.data?.error ||
+        e?.message ||
+        String(e);
+      setTlsBtcLog((l) => [...l, "", `✗ ${err}`]);
+      setMsg({
+        type: "err",
+        text:
+          err +
+          (String(err).includes("TLSN_PROVER_URL") || String(err).includes("prover")
+            ? " — set TLSN_PROVER_URL in server/.env and run `cd server && npm run tlsn-prover` (see docs/LOCAL_DEV.md)."
+            : ""),
+      });
+    } finally {
+      setBtcTlsBusy(false);
+    }
+  };
+
   const handleSave = async () => {
     persistLocalSecrets();
     setSaving(true);
@@ -350,11 +525,15 @@ export default function LayerConsole() {
           authMode,
         },
         workflow: { nodes, edges },
+        agentBindings: layerBindings,
+        appliedAt,
       });
       setMsg({
         type: "ok",
         text:
-          "Saved graph + OpenClaw defaults to server/data/layer-snapshot.json. This does not run DCT (no ERC-8004, Biscuit, or registry txs). Use Run DCT live demo for on-chain steps. PEM / bearer stayed in this browser.",
+          layerBindings
+            ? "Saved layout + on-chain agent bindings (orchestrator / research / payment) to the server. PEM / bearer stayed in this browser."
+            : "Saved layout only (server/data/layer-snapshot.json). Use Register & delegate on-chain to bind ERC-8004 ids + DCT delegations. PEM / bearer stayed in this browser.",
       });
     } catch (e) {
       setMsg({
@@ -363,6 +542,51 @@ export default function LayerConsole() {
       });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleApplyOnChain = async () => {
+    persistLocalSecrets();
+    setApplying(true);
+    setMsg(null);
+    setApplyRun({ phase: "running" });
+    try {
+      const r = await applyLayerOnChain({
+        workflow: { nodes, edges },
+        openClaw: { baseUrl: openClawBase.trim() },
+      });
+      const steps = Array.isArray(r.steps) ? r.steps : [];
+      setApplyRun({
+        phase: "done",
+        steps,
+        appliedAt: r.appliedAt ?? null,
+      });
+      setLayerBindings(r.agentBindings ?? null);
+      setAppliedAt(r.appliedAt ?? null);
+      await saveLayerSnapshot({
+        version: 1,
+        openClaw: { baseUrl: openClawBase.trim(), authMode },
+        workflow: { nodes, edges },
+        agentBindings: r.agentBindings ?? null,
+        appliedAt: r.appliedAt ?? null,
+      });
+      const b = r.agentBindings;
+      setMsg({
+        type: "ok",
+        text: b
+          ? `On-chain: ERC-8004 #${b.orchestrator?.agentId} / #${b.research?.agentId} / #${b.payment?.agentId} · Biscuit root + DCTRegistry O→R→P. Saved with bindings.`
+          : "Apply returned no bindings.",
+      });
+    } catch (e) {
+      const errText =
+        e.response?.data?.error || e.message || "Apply failed (need PRIVATE_KEY + contracts on server)";
+      setApplyRun({ phase: "error", error: errText });
+      setMsg({
+        type: "err",
+        text: errText,
+      });
+    } finally {
+      setApplying(false);
     }
   };
 
@@ -449,81 +673,232 @@ export default function LayerConsole() {
   }
 
   return (
-    <div className="space-y-6 max-w-[1200px]">
-      <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="nb-pill-accent text-[10px]">
-              Normal mode
-            </span>
-            <span className="text-[10px] text-nb-ink/50 font-display font-semibold">Operator console</span>
+    <div className="w-full max-w-[min(100%,1680px)] mx-auto space-y-5">
+      <header className="space-y-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+              <span className="nb-pill-accent text-[10px]">Normal mode</span>
+              <span className="text-[10px] text-nb-ink/50 font-display font-semibold">Operator console</span>
+            </div>
+            <h1 className="text-2xl font-display font-bold flex items-center gap-2 text-nb-ink">
+              <LayoutGrid className="w-7 h-7 shrink-0 text-nb-accent-2" />
+              Layer console
+            </h1>
+            <p className="text-sm text-nb-ink/60 mt-2 max-w-2xl leading-relaxed">
+              <span className="font-display font-semibold text-nb-ink/80">Register & delegate</span> maps this graph to
+              ERC-8004 agent IDs (orchestrator / research / payment), mints a root Biscuit, and registers two{" "}
+              <span className="font-mono">DCTRegistry</span> delegations (server wallet).{" "}
+              <span className="font-display font-semibold text-nb-ink/80">Run DCT live demo</span> opens the full phased UI.
+              OpenClaw is optional; tokens stay in localStorage.
+            </p>
           </div>
-          <h1 className="text-2xl font-display font-bold flex items-center gap-2 text-nb-ink">
-            <LayoutGrid className="w-7 h-7 text-nb-accent-2" />
-            Layer console
-          </h1>
-          <p className="text-sm text-nb-ink/60 mt-1 max-w-xl">
-            <span className="font-display font-semibold text-nb-ink/80">DCT live demo</span> runs on the{" "}
-            <span className="font-mono text-nb-ink/70">Live</span> page (chain, delegations, payments, TLS, trust).
-            OpenClaw tools below are optional. Workflow snapshot syncs to the API; tokens stay in localStorage only.
-          </p>
         </div>
-        <div className="flex flex-wrap gap-2 items-center">
-          <button
-            type="button"
-            onClick={() => {
-              setPendingLiveDemoE2E();
-              navigate("/live-demo");
-            }}
-            className="nb-btn-primary text-sm"
-            title="Opens Live and auto-runs the full 12-phase E2E (same as Run full E2E workflow there)"
-          >
-            <Workflow className="w-4 h-4" />
-            Run DCT live demo
-          </button>
-          <button
-            type="button"
-            onClick={handleAutofillDemo}
-            disabled={chainBusy}
-            className="nb-btn-ghost text-sm"
-            title="Fills from client/src/lib/layerDemoDefaults.js (optional VITE_LAYER_* overrides)"
-          >
-            <Wand2 className="w-4 h-4" />
-            Autofill demo
-          </button>
-          <button
-            type="button"
-            onClick={handleTestOpenClaw}
-            disabled={testing || chainBusy}
-            className="nb-btn-ghost text-sm"
-          >
-            {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
-            Test /health
-          </button>
-          <button
-            type="button"
-            onClick={handleRunChainDemo}
-            disabled={chainBusy || testing}
-            className="nb-btn-secondary text-sm"
-          >
-            {chainBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-            Run OpenClaw chain
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="nb-btn-secondary text-sm"
-          >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            Save to layer
-          </button>
+
+        {/* Actions: primary row + secondary row so the header doesn’t sprawl */}
+        <div className="flex flex-col gap-2 sm:gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="hidden sm:inline text-[10px] font-display font-bold uppercase tracking-wider text-nb-ink/40 w-full sm:w-auto sm:mr-1">
+              Chain
+            </span>
+            <button
+              type="button"
+              onClick={handleApplyOnChain}
+              disabled={applying || chainBusy || btcTlsBusy}
+              className="nb-btn-secondary text-sm border-2 border-emerald-600/80 text-emerald-800 bg-emerald-50/80"
+              title="POST /api/layer/apply — requires PRIVATE_KEY + deployed contracts"
+            >
+              {applying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
+              Register & delegate
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPendingLiveDemoE2E();
+                navigate("/live-demo");
+              }}
+              disabled={btcTlsBusy}
+              className="nb-btn-primary text-sm"
+              title="Opens Live and auto-runs the full 12-phase E2E"
+            >
+              <Workflow className="w-4 h-4" />
+              Run DCT live demo
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving || applying}
+              className="nb-btn-secondary text-sm"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              Save layout
+            </button>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 border-t border-nb-ink/10 pt-2 sm:border-t-0 sm:pt-0">
+            <span className="hidden sm:inline text-[10px] font-display font-bold uppercase tracking-wider text-nb-ink/40 w-full sm:w-auto sm:mr-1">
+              OpenClaw & demos
+            </span>
+            <button
+              type="button"
+              onClick={handleAutofillDemo}
+              disabled={chainBusy || btcTlsBusy}
+              className="nb-btn-ghost text-sm"
+              title="Fills from client/src/lib/layerDemoDefaults.js (optional VITE_LAYER_* overrides)"
+            >
+              <Wand2 className="w-4 h-4" />
+              Autofill demo
+            </button>
+            <button
+              type="button"
+              onClick={handleTestOpenClaw}
+              disabled={testing || chainBusy || btcTlsBusy}
+              className="nb-btn-ghost text-sm"
+            >
+              {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
+              Test /health
+            </button>
+            <button
+              type="button"
+              onClick={handleRunChainDemo}
+              disabled={chainBusy || testing || btcTlsBusy}
+              className="nb-btn-secondary text-sm"
+            >
+              {chainBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+              Run OpenClaw chain
+            </button>
+            <button
+              type="button"
+              onClick={handleBtcTlsOpenClaw}
+              disabled={btcTlsBusy || chainBusy || testing || applying}
+              className="nb-btn-secondary text-sm border-2 border-sky-600/50 bg-sky-50/80 text-sky-950"
+              title={`TLSNotary GET ${BTC_TLS_DEMO_URL} via DCT server, then OpenClaw (research agent)`}
+            >
+              {btcTlsBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <TrendingUp className="w-4 h-4" />}
+              BTC + TLS + OpenClaw
+            </button>
+          </div>
         </div>
       </header>
 
-      {chainLog.length > 0 && (
-        <div className="rounded-nb border-2 border-nb-ink bg-nb-card p-3 font-mono text-[11px] text-nb-ink/90 max-h-48 overflow-y-auto whitespace-pre-wrap">
-          {chainLog.join("\n")}
+      {layerBindings && (
+        <div className="rounded-nb border-2 border-emerald-600/40 bg-emerald-50/40 px-4 py-3 text-[11px] font-mono text-nb-ink">
+          <p className="font-display font-bold text-nb-ink mb-2">
+            On-chain bindings{appliedAt ? ` · ${appliedAt}` : ""}
+          </p>
+          {(["orchestrator", "research", "payment"]).map((slot, idx) => {
+            const b = layerBindings[slot];
+            if (!b) return null;
+            return (
+              <div
+                key={slot}
+                className={`flex flex-wrap gap-x-4 gap-y-0.5 pt-1.5 ${idx > 0 ? "border-t border-emerald-600/20" : ""}`}
+              >
+                <span className="w-28 shrink-0 text-nb-ink/60 capitalize">{slot}</span>
+                <span>agent #{b.agentId}</span>
+                {b.openClawBaseUrl ? (
+                  <span className="text-emerald-900/90 truncate max-w-[min(100%,280px)]" title={b.openClawBaseUrl}>
+                    OpenClaw {b.openClawBaseUrl.replace(/^https?:\/\//, "")}
+                  </span>
+                ) : (
+                  <span className="text-nb-ink/45">OpenClaw —</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {(applying || applyRun) && (
+        <div className="rounded-nb border-2 border-nb-ink bg-nb-card p-4 shadow-nb-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <p className="font-display font-bold text-sm text-nb-ink flex items-center gap-2">
+              {applyRun?.phase === "running" || applying ? (
+                <Loader2 className="w-4 h-4 animate-spin text-nb-accent-2 shrink-0" />
+              ) : applyRun?.phase === "done" ? (
+                <CheckCircle2 className="w-4 h-4 text-nb-ok shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-nb-error shrink-0" />
+              )}
+              Register & delegate — on-chain process
+            </p>
+            {applyRun?.phase === "done" && applyRun.appliedAt && (
+              <span className="text-[10px] font-mono text-nb-ink/50">{applyRun.appliedAt}</span>
+            )}
+          </div>
+
+          {applyRun?.phase === "running" && (
+            <div className="space-y-3">
+              <p className="text-xs text-nb-ink/70 leading-relaxed">
+                Submitting transactions on <span className="font-semibold">Base Sepolia</span> via the DCT server.
+                This usually takes tens of seconds (multiple confirmations).
+              </p>
+              <ul className="space-y-2 border-l-2 border-nb-accent-2/40 pl-3">
+                {APPLY_EXPECTED_PHASES.map((line) => (
+                  <li
+                    key={line}
+                    className="text-[11px] font-mono text-nb-ink/65 animate-pulse"
+                  >
+                    {line}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {applyRun?.phase === "error" && (
+            <div className="space-y-2">
+              <p className="text-xs text-nb-error font-mono leading-relaxed break-all">{applyRun.error}</p>
+              {/429|compute units|alchemy|throughput|capacity/i.test(applyRun.error || "") && (
+                <p className="text-[10px] text-nb-ink/65 leading-relaxed font-display">
+                  Your RPC endpoint (often Alchemy free tier) is rate-limiting bursts of transactions. The server spaces
+                  layer txs and retries JSON-RPC — try raising{" "}
+                  <span className="font-mono text-nb-ink/80">LAYER_APPLY_TX_GAP_MS</span> in{" "}
+                  <span className="font-mono">server/.env</span>, increase{" "}
+                  <span className="font-mono text-nb-ink/80">RPC_HTTP_*</span> retries, or use a higher-throughput RPC URL
+                  (e.g. Infura).
+                </p>
+              )}
+            </div>
+          )}
+
+          {applyRun?.phase === "done" && Array.isArray(applyRun.steps) && (
+            <ol className="space-y-4">
+              {applyRun.steps.map((raw, idx) => {
+                const s = describeApplyStep(raw);
+                return (
+                  <li
+                    key={`${s.title}-${idx}`}
+                    className="border-l-2 border-nb-ink pl-3 pb-1 last:pb-0"
+                  >
+                    <p className="text-[11px] font-display font-bold text-nb-ink">
+                      {idx + 1}. {s.title}
+                    </p>
+                    {s.lines?.length > 0 && (
+                      <ul className="mt-1 space-y-0.5">
+                        {s.lines.map((line, li) => (
+                          <li key={`${idx}-${li}`} className="text-[10px] font-mono text-nb-ink/70 break-all">
+                            {line}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {s.txHash && (
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px]">
+                        <span className="text-nb-ink/50 font-display font-semibold uppercase tracking-wide">
+                          Tx
+                        </span>
+                        <TxHashLink hash={s.txHash} />
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+
+          {applyRun?.phase === "done" && (!applyRun.steps || applyRun.steps.length === 0) && (
+            <p className="text-xs text-nb-ink/60">Apply finished but no step log was returned (unexpected).</p>
+          )}
         </div>
       )}
 
@@ -546,9 +921,36 @@ export default function LayerConsole() {
         </motion.div>
       )}
 
-      <div className="grid lg:grid-cols-[minmax(300px,360px)_1fr] gap-6 items-start">
-        {/* OpenClaw */}
-        <div className="space-y-4">
+      {/* Workflow first (primary), config + inspector docked on the right (desktop) */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(300px,380px)] lg:items-start">
+        {/* Canvas — main workspace (first column on desktop, below forms on mobile) */}
+        <div className="space-y-3 min-w-0 order-2 lg:order-1">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-sm font-display font-bold text-nb-ink">Delegation workflow</h2>
+            <button
+              type="button"
+              onClick={addAgent}
+              className="nb-pill hover:bg-nb-accent/30 transition-colors cursor-pointer self-start sm:self-auto"
+            >
+              <Plus className="w-3.5 h-3.5" /> Add agent
+            </button>
+          </div>
+          <LayerWorkflowCanvas
+            nodes={nodes}
+            setNodes={setNodes}
+            edges={edges}
+            setEdges={setEdges}
+            onSelectNodeId={setSelectedId}
+          />
+          <p className="text-[10px] text-nb-ink/50 leading-relaxed">
+            <strong className="text-nb-ink/70">Register & delegate on-chain</strong> enforces this graph: three ERC-8004
+            registrations, root Biscuit, and <span className="font-mono">registerDelegation</span> O→R and R→P.{" "}
+            <strong className="text-nb-ink/70">Save layout</strong> persists JSON + any bindings from a prior apply.
+          </p>
+        </div>
+
+        {/* OpenClaw + inspector — first on mobile; right column + sticky on large screens */}
+        <div className="space-y-4 min-w-0 order-1 lg:order-2 lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
           <div className="nb-card">
             <div className="flex items-center gap-2 mb-4">
               <Server className="w-4 h-4 text-nb-accent-2" />
@@ -557,8 +959,9 @@ export default function LayerConsole() {
             <p className="text-[10px] text-nb-ink/50 mb-3 leading-relaxed">
               Requests are proxied through the DCT server at{" "}
               <span className="font-mono text-nb-ink/70">{DCT_API_BASE}</span> so ngrok does not need CORS.
-              Start it with <span className="font-mono">cd server && npm start</span> (same host as{" "}
-              <span className="font-mono">VITE_API_URL</span>).
+              <span className="font-semibold text-nb-ink/70"> BTC + TLS + OpenClaw</span> runs a real{" "}
+              <span className="font-mono">POST /api/tlsn/prove</span> against a Bitcoin price URL, then sends the verified body
+              to your Research agent. Requires <span className="font-mono">TLSN_PROVER_URL</span> on the server.
             </p>
             <label className="block text-[10px] font-display font-bold uppercase tracking-wider text-nb-ink/50 mb-1">
               Default base URL (fallback if an agent field is empty)
@@ -619,7 +1022,7 @@ export default function LayerConsole() {
             <h2 className="text-sm font-display font-bold mb-3 text-nb-ink">Selected node</h2>
             {!selectedAgent && (
               <p className="text-xs text-nb-ink/50">
-                Click an agent node to edit limits, or add a new agent below the canvas.
+                Click an agent on the graph to edit limits, or use <span className="font-semibold text-nb-ink/70">Add agent</span> in the workflow header.
               </p>
             )}
             {selectedAgent && (
@@ -723,7 +1126,7 @@ export default function LayerConsole() {
                 <button
                   type="button"
                   onClick={handlePingSelectedAgent}
-                  disabled={testing || chainBusy}
+                  disabled={testing || chainBusy || btcTlsBusy}
                   className="nb-btn-ghost text-xs w-full"
                 >
                   {testing ? <Loader2 className="w-3.5 h-3.5 animate-spin inline" /> : null}{" "}
@@ -740,35 +1143,26 @@ export default function LayerConsole() {
             )}
           </div>
         </div>
-
-        {/* Canvas */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-display font-bold text-nb-ink/60">Delegation workflow</h2>
-            <button
-              type="button"
-              onClick={addAgent}
-              className="nb-pill hover:bg-nb-accent/30 transition-colors cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" /> Add agent
-            </button>
-          </div>
-          <LayerWorkflowCanvas
-            nodes={nodes}
-            setNodes={setNodes}
-            edges={edges}
-            setEdges={setEdges}
-            onSelectNodeId={setSelectedId}
-          />
-          <p className="text-[10px] text-nb-ink/50 leading-relaxed">
-            Drag and connect nodes. <strong className="text-nb-ink/70">Save to layer</strong> only persists the canvas JSON
-            (plus default OpenClaw URL) — it does <strong className="text-nb-ink/70">not</strong> bind agent identity or enforce
-            scopes on-chain. Those limits are a design record until you run delegation via the{" "}
-            <strong className="text-nb-ink/70">Live</strong> demo or SDK. Nothing else reads this file today except this page
-            on load.
-          </p>
-        </div>
       </div>
+
+      {/* Activity output below the workspace so the graph stays near the top */}
+      {chainLog.length > 0 && (
+        <div className="rounded-nb border-2 border-nb-ink bg-nb-card p-3 font-mono text-[11px] text-nb-ink/90 max-h-48 overflow-y-auto whitespace-pre-wrap">
+          <p className="font-display font-bold text-nb-ink/70 mb-2 text-[10px] uppercase tracking-wide">
+            OpenClaw chain log
+          </p>
+          {chainLog.join("\n")}
+        </div>
+      )}
+
+      {tlsBtcLog.length > 0 && (
+        <div className="rounded-nb border-2 border-sky-600/40 bg-sky-50/50 p-3 font-mono text-[11px] text-nb-ink/90 max-h-64 overflow-y-auto whitespace-pre-wrap">
+          <p className="font-display font-bold text-sky-900/90 mb-2 text-[10px] uppercase tracking-wide">
+            TLSNotary + OpenClaw (BTC)
+          </p>
+          {tlsBtcLog.join("\n")}
+        </div>
+      )}
     </div>
   );
 }

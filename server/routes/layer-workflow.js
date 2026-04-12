@@ -9,6 +9,7 @@ import express from "express";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { applyLayerWorkflow } from "../lib/layerApplyWorkflow.mjs";
 
 const router = express.Router();
 
@@ -53,6 +54,9 @@ function validateBody(body) {
     if (w.nodes !== undefined && !Array.isArray(w.nodes)) return "workflow.nodes must be an array";
     if (w.edges !== undefined && !Array.isArray(w.edges)) return "workflow.edges must be an array";
   }
+  if (body.agentBindings !== undefined && body.agentBindings !== null && typeof body.agentBindings !== "object") {
+    return "agentBindings must be an object or null";
+  }
   return null;
 }
 
@@ -67,6 +71,8 @@ router.get("/snapshot", (_req, res) => {
       version: 1,
       openClaw: { baseUrl: "", authMode: "none" },
       workflow: { nodes: [], edges: [] },
+      agentBindings: null,
+      appliedAt: null,
       updatedAt: null,
     });
   }
@@ -102,6 +108,8 @@ router.post("/snapshot", (req, res) => {
       nodes: req.body.workflow?.nodes ?? [],
       edges: req.body.workflow?.edges ?? [],
     },
+    agentBindings: req.body.agentBindings ?? null,
+    appliedAt: req.body.appliedAt ?? null,
     updatedAt: new Date().toISOString(),
   };
 
@@ -109,6 +117,31 @@ router.post("/snapshot", (req, res) => {
   fs.writeFileSync(SNAPSHOT_FILE, JSON.stringify(snapshot, null, 2), "utf-8");
 
   res.json({ ok: true, snapshot });
+});
+
+/**
+ * POST /api/layer/apply
+ * Body: { workflow: { nodes, edges }, openClaw?: { baseUrl } }
+ * Registers three ERC-8004 agents (orchestrator / research / payment), mints root Biscuit, delegates twice.
+ * Requires PRIVATE_KEY and deployed addresses. Returns agentBindings for merging into snapshot.
+ */
+router.post("/apply", async (req, res) => {
+  const err = validateBody(req.body);
+  if (err) return res.status(400).json({ error: err });
+  try {
+    const result = await applyLayerWorkflow(
+      {
+        workflow: req.body.workflow ?? {},
+        openClaw: req.body.openClaw ?? {},
+      },
+      req
+    );
+    res.json(result);
+  } catch (e) {
+    console.error("[layer] apply:", e.message);
+    const code = /PRIVATE_KEY|required/i.test(e.message) ? 503 : 500;
+    res.status(code).json({ error: e.message || "apply failed" });
+  }
 });
 
 /**

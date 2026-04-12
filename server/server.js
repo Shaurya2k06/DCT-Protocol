@@ -91,6 +91,7 @@ app.get("/", (req, res) => {
     endpoints: [
       "GET  /api/layer/snapshot              ← Operator workflow (no secrets)",
       "POST /api/layer/snapshot",
+      "POST /api/layer/apply                 ← ERC-8004 + Biscuit + DCTRegistry from Layer graph",
       "GET  /api/layer/openclaw-health       ← Proxy OpenClaw /health (CORS)",
       "POST /api/layer/openclaw-chat         ← Proxy OpenClaw chat completions (CORS)",
       "GET  /api/config",

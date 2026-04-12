@@ -2,9 +2,10 @@ import axios from "axios";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
+/** Default HTTP timeout — most routes. Layer apply / TLSN override per-request. */
 const api = axios.create({
   baseURL: API_URL,
-  timeout: 60000, // 60s for on-chain operations
+  timeout: 120000, // 2m (on-chain + slow RPC)
   headers: { "Content-Type": "application/json" },
 });
 
@@ -71,9 +72,19 @@ export const getConfig = () => api.get("/api/config").then((r) => r.data);
 export const getLayerSnapshot = () =>
   api.get("/api/layer/snapshot").then((r) => r.data);
 
-/** @param {{ version?: number, openClaw: { baseUrl: string, authMode: string }, workflow: { nodes: unknown[], edges: unknown[] } }} body */
+/** @param {{ version?: number, openClaw: { baseUrl: string, authMode: string }, workflow: { nodes: unknown[], edges: unknown[] }, agentBindings?: object | null, appliedAt?: string | null }} body */
 export const saveLayerSnapshot = (body) =>
   api.post("/api/layer/snapshot", body).then((r) => r.data);
+
+/**
+ * On-chain: register three agents + root Biscuit + two delegations from Layer workflow nodes.
+ * Can take several minutes (5 txs, RPC spacing, confirmations, retries). Override with VITE_LAYER_APPLY_TIMEOUT_MS.
+ */
+export const applyLayerOnChain = (body) => {
+  const ms = Number(import.meta.env.VITE_LAYER_APPLY_TIMEOUT_MS);
+  const timeout = Number.isFinite(ms) && ms >= 60000 ? ms : 600000; // default 10m
+  return api.post("/api/layer/apply", body, { timeout }).then((r) => r.data);
+};
 
 // ── TLSNotary (server-side prover — no browser tlsn-js) ──
 export const getTlsnConfig = () =>

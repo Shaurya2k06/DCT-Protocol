@@ -441,6 +441,8 @@ export default function LiveDemo() {
   const fullWorkflowActiveRef = useRef(false);
   const logSeqRef = useRef(0);
   const logsEndRef = useRef(null);
+  /** Serialize /api/chain/tx calls to avoid Alchemy 429 bursts from parallel receipt polls. */
+  const chainTxTailRef = useRef(Promise.resolve());
   /** Set after `runFullWorkflow` is defined — Layer console can trigger E2E via sessionStorage. */
   const runFullWorkflowRef = useRef(async () => {});
 
@@ -491,6 +493,18 @@ export default function LiveDemo() {
     });
   }, []);
 
+  /** One RPC decode at a time + short gap — reduces Alchemy CU/s spikes vs parallel polls. */
+  const fetchChainTxThrottled = useCallback((hash) => {
+    const p = chainTxTailRef.current
+      .then(() => new Promise((r) => setTimeout(r, 180)))
+      .then(() => api.get(`/api/chain/tx/${hash}`).then((r) => r.data));
+    chainTxTailRef.current = p.then(
+      () => undefined,
+      () => undefined
+    );
+    return p;
+  }, []);
+
   /**
    * Register an on-chain tx (hash or object). Merges by hash, then fetches
    * /api/chain/tx/:hash for method + args + fee (RPC decode — no explorer API key).
@@ -515,9 +529,7 @@ export default function LiveDemo() {
         return next;
       });
 
-      api
-        .get(`/api/chain/tx/${entry.hash}`)
-        .then((r) => r.data)
+      fetchChainTxThrottled(entry.hash)
         .then((data) => {
           if (!data || data.error || data.pending) return;
           mergeTxByHash(entry.hash, {
@@ -527,7 +539,7 @@ export default function LiveDemo() {
         })
         .catch(() => {});
     },
-    [mergeTxByHash]
+    [mergeTxByHash, fetchChainTxThrottled]
   );
 
   /** One terminal-style line for gas/fee after an API response. */
@@ -1199,7 +1211,7 @@ export default function LiveDemo() {
             let fw = o.feeWei;
             if (o.hash && (!gu || !fw)) {
               try {
-                const d = await api.get(`/api/chain/tx/${o.hash}`).then((r) => r.data);
+                const d = await fetchChainTxThrottled(o.hash);
                 if (d && !d.pending && !d.error) {
                   gu = gu || d.gasUsed;
                   fw = fw || d.feeWei;

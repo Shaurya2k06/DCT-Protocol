@@ -37,6 +37,7 @@ import {
   trustProfileToApi,
 } from "../lib/dctEnforcerTrust.mjs";
 import { syncTrustProfileToDb } from "../lib/db.js";
+import { withRpcRetry } from "../lib/rpc-provider.mjs";
 
 const router = express.Router();
 
@@ -111,9 +112,11 @@ router.get("/chain/tx/:hash", async (req, res) => {
       return res.status(400).json({ error: "invalid tx hash" });
     }
     const provider = getProvider();
-    const tx = await provider.getTransaction(hash);
+    const tx = await withRpcRetry("chain/tx getTransaction", () => provider.getTransaction(hash));
     if (!tx) return res.status(404).json({ error: "transaction not found" });
-    const receipt = await provider.getTransactionReceipt(hash);
+    const receipt = await withRpcRetry("chain/tx getTransactionReceipt", () =>
+      provider.getTransactionReceipt(hash)
+    );
     if (!receipt) {
       return res.json({
         hash,

@@ -1,116 +1,103 @@
 /**
- * Generates a TLSNotary plugin script for the tlsn-extension.
+ * TLSNotary extension plugins — https://tlsnotary.org/docs/extension/plugins/
  *
- * The extension runs this inside a sandboxed QuickJS WASM environment.
- * Available env: openWindow, useRequests, useHeaders, useEffect, useState,
- *   setState, prove, done, div, button.
+ * Newer tlsn-extension builds require `export const config` with `requests[]`
+ * (see permissionValidator.ts): each prove() must match method, host, pathname,
+ * verifierUrl, and proxyUrl (or derived default).
  *
- * See PLUGIN.md in tlsnotary/tlsn-extension for the full API reference.
- *
- * @param {string} url          Target URL to prove (must be HTTPS)
- * @param {string} verifierUrl  Verifier endpoint (e.g. http://localhost:7047)
- * @returns {string}            JavaScript source the extension will execute
+ * Use HTTP(S) verifier origin for `verifierUrl` in prove + config (matches docs);
+ * proxy is wss/ws to /proxy?token=<host>.
  */
-export function buildProvePlugin(url, verifierUrl) {
-  const parsed = new URL(url);
-  const host = parsed.hostname;
-  const proxyUrl = verifierUrl.replace(/^http/, "ws") + "/proxy?token=" + host;
 
-  return `
-// ── DCT TLSNotary prove plugin ────────────────────────────────────────
-// Proves a GET request to ${host} using the TLSN extension + verifier.
-
-function proveProgressBar() {
-  var progress = useState('_proveProgress', null);
-  if (!progress) return [];
-  var pct = Math.round(progress.progress * 100) + '%';
-  return [
-    div({ style: { marginTop: '12px' } }, [
-      div({ style: { height: '6px', backgroundColor: '#e5e7eb', borderRadius: '3px', overflow: 'hidden' } }, [
-        div({ style: { height: '100%', width: pct, background: 'linear-gradient(90deg, #667eea, #764ba2)', borderRadius: '3px', transition: 'width 0.4s ease' } }, []),
-      ]),
-      div({ style: { fontSize: '12px', color: '#6b7280', marginTop: '6px', textAlign: 'center' } }, [
-        progress.message || progress.step || ''
-      ]),
-    ]),
-  ];
+/**
+ * Same derivation as tlsn-extension `deriveProxyUrl` (permissionValidator.ts).
+ * @param {string} verifierHttpOrigin  e.g. https://demo.tlsnotary.org or http://127.0.0.1:7047
+ * @param {string} targetHostname      e.g. example.com
+ */
+export function buildVerifierProxyUrl(verifierHttpOrigin, targetHostname) {
+  const url = new URL(verifierHttpOrigin);
+  const protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${url.host}/proxy?token=${targetHostname}`;
 }
 
-function main() {
-  var step  = useState('step',  'idle');
-  var error = useState('error', '');
+/**
+ * @param {string} httpOrigin  Normalized http(s) origin
+ * @returns {string}           Rough wss/ws origin for logging only
+ */
+export function verifierHttpToWsUrl(httpOrigin) {
+  const t = (httpOrigin || "").trim().replace(/\/$/, "");
+  if (/^wss:\/\//i.test(t)) return t;
+  if (/^ws:\/\//i.test(t)) return t;
+  if (!/^https?:\/\//i.test(t)) return `ws://${t}`;
+  return t.replace(/^http/i, "ws");
+}
 
+/**
+ * @param {string} url           Target HTTPS URL to prove (GET)
+ * @param {string} verifierHttp  Verifier HTTP origin (GET /health); must match UI field
+ * @returns {string}             Plugin source for window.tlsn.execCode
+ */
+export function buildProvePlugin(url, verifierHttp) {
+  const parsed = new URL(url);
+  const host = parsed.hostname;
+  const proxyUrl = buildVerifierProxyUrl(verifierHttp, host);
+
+  return `
+export const config = {
+  name: 'DCT TLSNotary',
+  description: 'DCT /tlsn demo — prove GET to the URL you enter',
+  requests: [
+    {
+      method: 'GET',
+      host: ${JSON.stringify(host)},
+      pathname: '**',
+      verifierUrl: ${JSON.stringify(verifierHttp)},
+    },
+  ],
+};
+
+export function main() {
   useEffect(function () {
-    setState('step', 'opening');
-    openWindow(${JSON.stringify(url)}, { width: 900, height: 600, showOverlay: true });
-  }, []);
-
-  var reqs = useRequests(function (all) {
-    return all.filter(function (r) { return r.url.indexOf(${JSON.stringify(host)}) !== -1; });
-  });
-
-  var headers = useHeaders(function (all) {
-    return all.filter(function (h) { return h.url.indexOf(${JSON.stringify(host)}) !== -1; });
-  });
-
-  useEffect(function () {
-    if (step !== 'opening' && step !== 'idle') return;
-    if (!reqs || reqs.length === 0) return;
-    setState('step', 'proving');
-
-    var target = reqs[0];
-
-    var reqHeaders = {};
-    if (headers && headers.length > 0) {
-      var h = headers[0];
-      if (h.requestHeaders) {
-        for (var i = 0; i < h.requestHeaders.length; i++) {
-          reqHeaders[h.requestHeaders[i].name] = h.requestHeaders[i].value || '';
-        }
-      }
-    }
-    reqHeaders['Host'] = ${JSON.stringify(host)};
-    reqHeaders['Accept-Encoding'] = 'identity';
-    reqHeaders['Connection'] = 'close';
-
     prove(
-      { url: target.url, method: target.method || 'GET', headers: reqHeaders },
       {
-        verifierUrl: ${JSON.stringify(verifierUrl)},
+        url: ${JSON.stringify(url)},
+        method: 'GET',
+        headers: {
+          Host: ${JSON.stringify(host)},
+          Accept: '*/*',
+          'Accept-Encoding': 'identity',
+          Connection: 'close',
+          'User-Agent': 'Mozilla/5.0 (compatible) DCT-TlsnDemo/1.0',
+        },
+      },
+      {
+        verifierUrl: ${JSON.stringify(verifierHttp)},
         proxyUrl: ${JSON.stringify(proxyUrl)},
         maxRecvData: 16384,
         maxSentData: 4096,
         handlers: [
-          { type: 'SENT',  part: 'START_LINE',  action: 'REVEAL' },
-          { type: 'RECV',  part: 'START_LINE',  action: 'REVEAL' },
-          { type: 'RECV',  part: 'HEADERS',     action: 'REVEAL', params: { key: 'content-type' } },
-          { type: 'RECV',  part: 'HEADERS',     action: 'REVEAL', params: { key: 'date' } },
-          { type: 'RECV',  part: 'BODY',        action: 'REVEAL' },
+          { type: 'SENT', part: 'START_LINE', action: 'REVEAL' },
+          { type: 'RECV', part: 'START_LINE', action: 'REVEAL' },
+          { type: 'RECV', part: 'HEADERS', action: 'REVEAL', params: { key: 'content-type' } },
+          { type: 'RECV', part: 'HEADERS', action: 'REVEAL', params: { key: 'date' } },
+          { type: 'RECV', part: 'BODY', action: 'REVEAL' },
         ],
       }
     ).then(function (result) {
-      setState('step', 'done');
-      done(JSON.stringify(result));
+      done(result);
     }).catch(function (err) {
-      setState('step', 'error');
-      setState('error', err.message || String(err));
+      var msg = err && err.message ? String(err.message) : String(err);
+      done(JSON.stringify({ error: msg, source: 'DCT-TlsnDemo' }));
     });
-  }, [reqs, step]);
+  }, []);
 
-  var msg = 'Waiting…';
-  if (step === 'idle')    msg = 'Initializing…';
-  if (step === 'opening') msg = 'Opening ' + ${JSON.stringify(host)} + ' — browse normally until a request is captured.';
-  if (step === 'proving') msg = 'Running MPC-TLS proof — this can take 30-60 s…';
-  if (step === 'done')    msg = 'Proof complete!';
-  if (step === 'error')   msg = 'Error: ' + error;
-
-  return div({ style: { padding: '16px', fontFamily: 'monospace', fontSize: '13px', color: '#e0e0e0', backgroundColor: '#1a1a2e', borderRadius: '8px' } }, [
-    div({ style: { fontWeight: 'bold', marginBottom: '8px', color: '#667eea' } }, ['DCT — TLSNotary Proof']),
-    div({}, [msg]),
-    ...proveProgressBar(),
-  ]);
+  return div(
+    { style: { padding: '16px', fontFamily: 'monospace', fontSize: '13px', color: '#e0e0e0', backgroundColor: '#1a1a2e', borderRadius: '8px' } },
+    [
+      div({ style: { fontWeight: 'bold', marginBottom: '8px', color: '#667eea' } }, ['DCT TLSNotary']),
+      div({}, ['MPC proof running. Watch the extension overlay for progress.']),
+    ]
+  );
 }
-
-module.exports = { main: main };
 `;
 }

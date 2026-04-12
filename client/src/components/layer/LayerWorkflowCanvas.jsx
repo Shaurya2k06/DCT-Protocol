@@ -60,7 +60,7 @@ export default function LayerWorkflowCanvas({
   );
 
   return (
-    <div className="h-[min(70vh,640px)] w-full overflow-hidden rounded-2xl border border-stone-200 bg-white">
+    <div className="h-[min(72vh,720px)] min-h-[420px] w-full overflow-hidden rounded-2xl border-2 border-nb-ink bg-white shadow-nb-sm">
       <ReactFlowProvider>
       <ReactFlow
         nodes={nodes}
