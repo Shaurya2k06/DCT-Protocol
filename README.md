@@ -1,228 +1,269 @@
 # DCT Protocol
 
-**Delegatable Capability Tokens** — a full-stack protocol for cryptographically-scoped AI agent authorization on Base.
+Delegatable Capability Tokens is a full-stack protocol for cryptographically scoped AI agent authorization on Base Sepolia. It combines off-chain Biscuit attenuation, on-chain delegation enforcement, TLSNotary attestations, ERC-4337 sponsorship, and a React/Vite control surface for demos and operator workflows.
 
 | Layer | Technology |
 |---|---|
 | Identity | ERC-8004 Agent NFT Registry |
 | Off-chain auth | Eclipse Biscuit WASM (Ed25519 + Datalog) |
-| On-chain enforcement | DCTRegistry + DCTEnforcer (UUPS, Base Sepolia) |
-| Action attestation | TLSNotary (tlsn-extension for browser + server-side prover) |
+| On-chain enforcement | DCTRegistry + DCTEnforcer (UUPS proxies) |
+| Action attestation | TLSNotary extension or server-side prover |
 | Gas sponsorship | ERC-4337 via Pimlico bundler + paymaster |
-| Backend | Node.js / Express (`server/`) |
-| Frontend | React / Vite (`client/`) |
+| Backend | Node.js + Express in `server/` |
+| Frontend | React + Vite in `client/` |
+| Contracts | Foundry in `contracts/` |
 
----
+## What ships
 
-## Quick start
+- `/` landing page with protocol overview.
+- `/tlsn` proof builder for TLSNotary, with browser extension mode and server API fallback.
+- `/live-demo` 12-phase interactive end-to-end demo with live on-chain event stream.
+- `/layer` operator console for OpenClaw workflow setup, CORS proxying, and demo orchestration.
+- Backend APIs for agents, Biscuit tokens, delegation, revocation, trust scoring, TLSN proofs, ERC-4337 execution, and workflow snapshots.
+- Solidity contracts for registry, enforcer, notary verifier, caveat enforcer, and upgrade scripts.
+
+## Architecture
+
+The core flow is:
+
+1. An ERC-8004 agent is registered or discovered.
+2. A Biscuit root token is minted and attenuated offline.
+3. Delegation is recorded on-chain in DCTRegistry.
+4. Execution is validated by DCTEnforcer using scope, revocation state, and attestation.
+5. TLSNotary can prove the HTTP action, and ERC-4337 can sponsor gas when Pimlico is configured.
+6. Trust scoring is computed from on-chain and off-chain signals and shown in the UI.
+
+## Repository Layout
+
+- `client/` React UI, demo pages, and local UI state.
+- `server/` Express API, blockchain wiring, Biscuit helpers, TLSN prover integration, and demo endpoints.
+- `contracts/` Foundry contracts, scripts, tests, and deployment helpers.
+- `docs/LOCAL_DEV.md` local Anvil walkthrough and demo instructions.
+- `contracts/DELEGATION_FRAMEWORK.md` MetaMask delegation framework notes.
+- `scripts/demo-onchain.sh` one-command Base Sepolia demo runner.
+
+## Run The App
+
+### Prerequisites
+
+- Node 20+.
+- Docker Desktop if you want the local TLSNotary notary stack.
+- Foundry if you want to build or deploy contracts locally.
+
+### Install
 
 ```bash
-# 1 — Install all deps
 npm install --prefix server
 npm install --prefix client
-
-# 2 — Copy and fill env
-cp server/.env.example server/.env
-cp client/.env.example client/.env
-# Server: INFURA_PROJECT_ID or RPC_URL (see server/.env.example), PRIVATE_KEY for on-chain writes
-# Client: VITE_API_URL → your API origin (default localhost:3000)
-# Optional: PIMLICO_API_KEY, DATABASE_URL, TLSN_*
-
-# 3 — Start server (WASM module support required)
-cd server && npm start
-# → http://localhost:3000
-
-# 4 — Start client
-cd client && npm run dev
-# → http://localhost:5173  (Live Demo at /live-demo)
-
-# 5 — (Optional) TLSNotary Docker notary
-docker compose -f docker-compose.tlsn.yml up -d
-# → notary on :7047, wstcp proxy on :55688
-
-# 6 — (Optional) Dev TLS prover
-cd server && npm run tlsn-prover
-# → prover on :8090
 ```
 
-### TLSNotary — extension (browser) + server API
+### Environment
 
-The **`/tlsn`** page supports two proving modes:
-
-| Mode | How it works |
-|---|---|
-| **Extension** (preferred) | Uses the maintained **[tlsn-extension](https://github.com/tlsnotary/tlsn-extension)** Chrome extension. The page sends plugin JS via `window.tlsn.execCode()` and the extension runs a real MPC-TLS proof in-browser with its bundled WASM prover + verifier. Progress events stream back via `window.postMessage`. |
-| **Server API** (fallback) | Calls `POST /api/tlsn/prove` on the DCT server, which proxies to `TLSN_PROVER_URL` (`POST /prove`). Run `cd server && npm run tlsn-prover` for a local dev prover, or wire a real Rust tlsn prover. |
-
-**Extension quick start:**
+Copy the example files and fill them in:
 
 ```bash
-# 1 — Clone & build the extension
-git clone https://github.com/tlsnotary/tlsn-extension.git
-cd tlsn-extension && npm install && npm run dev
-
-# 2 — Load in Chrome
-#   chrome://extensions → Developer mode → Load unpacked → packages/extension/build
-
-# 3 — Start the verifier (from tlsn-extension repo)
-cd packages/verifier && cargo run   # → http://localhost:7047
-
-# 4 — Open DCT client (this repo)
-cd client && npm run dev            # → http://localhost:5173/tlsn
-# The page detects window.tlsn automatically
+cp server/.env.example server/.env
+cp client/.env.example client/.env
 ```
 
-The upstream `tlsn-js` npm package is **deprecated** — this repo does not use it.
+Minimum useful variables:
 
----
-
-## Contract addresses — Base Sepolia (chainId 84532)
-
-| Contract | Address |
-|---|---|
-| ERC8004IdentityRegistry | `0x8004A818BFB912233c491871b3d84c89A494BD9e` |
-| DCTRegistry | `0x2cec268a5934bfa5aa7f973ac7accf8ac17b89cf` |
-| DCTEnforcer | `0x256a633fa2c990a64ec4adf79685f59490a241f8` |
-| DCTCaveatEnforcer | `0x8e4c74b1a26663ba734fbeb7a7cc68204cf1eb68` |
-| NotaryAttestationVerifier | `0x58874114f6c28c1c782161ed0385680f4d26c558` |
-
----
-
-## Where environment variables live
-
-| File | Purpose |
-|------|---------|
-| `server/.env` | Chain RPC (Infura recommended: `INFURA_PROJECT_ID` or full `RPC_URL`), `PRIVATE_KEY`, DB, TLSN, Pimlico. **Gitignored.** |
-| `client/.env` | `VITE_API_URL` (API origin), `VITE_BASESCAN_URL`. **Gitignored.** |
-| `server/.env.example` / `client/.env.example` | Safe templates — copy these; never commit real secrets. |
-
-## Environment checklist
-
-```
-# server/.env (never commit)
-PRIVATE_KEY=<deployer / signer EOA private key>
-INFURA_PROJECT_ID=<Infura dashboard project id>   # or set RPC_URL=https://base-sepolia.infura.io/v3/...
-# Legacy: ALCHEMY_API_KEY=<...>
-PIMLICO_API_KEY=<for ERC-4337 sponsored gas; omit to use EOA fallback>
-DATABASE_URL=<Neon / Postgres connection string; omit to disable audit log>
+```bash
+# server/.env
+PRIVATE_KEY=<signer private key>
+INFURA_PROJECT_ID=<or set RPC_URL>
+ADDRESSES_FILE=addresses.base-sepolia.json
+DATABASE_URL=<optional Postgres URL>
+PIMLICO_API_KEY=<optional, enables ERC-4337>
 TLSN_NOTARY_URL=http://127.0.0.1:7047
 TLSN_PROVER_URL=http://127.0.0.1:8090
-```
 
-```
 # client/.env
 VITE_API_URL=http://localhost:3000
+VITE_BASESCAN_URL=https://sepolia.basescan.org
+VITE_TLSN_DEMO_URL=https://api.github.com/zen
 ```
 
-Rotate any key that was ever logged, printed, or exposed in chat.  
-Confirm before every push with `git status` — `.env` files must not be committed.
+For the Layer console, optional demo overrides live in `client/.env` as `VITE_LAYER_SHARED_URL`, `VITE_LAYER_SHARED_BEARER`, `VITE_LAYER_MODEL`, `VITE_LAYER_ORCH_URL`, `VITE_LAYER_ORCH_BEARER`, `VITE_LAYER_RESEARCH_URL`, `VITE_LAYER_RESEARCH_BEARER`, `VITE_LAYER_PAYMENT_URL`, and `VITE_LAYER_PAYMENT_BEARER`.
 
----
+### Start Backend And Frontend
 
-## On-chain event stream
+From the repo root:
 
-`GET /api/events` — Server-Sent Events (SSE) endpoint.  
-Emits `DelegationRegistered`, `DelegationRevoked`, `TrustUpdated`, `ActionValidated` from on-chain logs.
-
-```js
-const es = new EventSource('http://localhost:3000/api/events');
-es.onmessage = (e) => console.log(JSON.parse(e.data));
+```bash
+npm start --prefix server
+npm run dev --prefix client
 ```
 
-Uses a WebSocket provider when `WS_RPC_URL` is set, or when Infura / Alchemy env vars supply a derived WSS URL;  
-falls back to HTTP polling every 6 s otherwise.
+- Server: http://localhost:3000
+- Client: http://localhost:5173
+- Direct demo routes still work at `/tlsn`, `/live-demo`, and `/layer`.
 
-The **Live Demo** (`/live-demo`) shows an embedded event log fed from this endpoint.
+## Demo Paths
 
----
+### Fastest UI Demo
 
-## ERC-4337 execution
+1. Start the server and client.
+2. Open http://localhost:5173/live-demo.
+3. Run the 12-phase demo end to end.
 
-`POST /api/execute/submit` tries the ERC-4337 (Pimlico) path first when `PIMLICO_API_KEY` is set:
+The phases cover:
 
-1. Looks up the token's scope metadata from the in-process Biscuit store.
-2. Builds and sends a `validateActionWithScope` UserOperation via Pimlico bundler + paymaster.
-3. Falls back to direct EOA `execute()` if `PIMLICO_API_KEY` is absent, the key is missing, or the AA path errors.
+| Phase | What happens |
+|---|---|
+| 0 | Health checks for chain, registry, enforcer, ERC-8004, Pimlico, TLSNotary |
+| 1 | Three agents are registered |
+| 2 | Root Biscuit token is minted |
+| 3 | Orchestrator delegates to Research |
+| 4 | Research delegates to Payment |
+| 5 | Successful execution with revocation, identity, scope, and attestation checks |
+| 6 | Off-chain Datalog rejection with zero gas |
+| 7 | On-chain revert for out-of-scope action |
+| 8 | Single-tx cascade revocation |
+| 9 | Lineage walk animation |
+| 10 | Trust score timeline |
+| 11 | Summary and stats |
 
-Response includes `"path": "aa-4337"` or `"path": "eoa"` so the frontend can surface which was used.
+The right-hand panel streams `GET /api/events` SSE output from Base Sepolia.
 
----
+### On-Chain Demo Script
 
-## Contracts
+If you want the scripted chain + audit run instead of the browser demo, use:
 
+```bash
+./scripts/demo-onchain.sh
 ```
-contracts/
-  src/
-    DCTRegistry.sol           — delegation lineage + trust scoring (UUPS)
-    DCTEnforcer.sol           — validateActionWithScope (UUPS)
-    NotaryAttestationVerifier.sol — TLSNotary ECDSA oracle
-    mocks/TestAgentRegistry.sol
-  test/
-    DCTRegistry.t.sol         — 18 unit tests incl. gas snapshots + security
-  script/
-    DeployDCT.s.sol
-    UpgradeDCTEnforcer.s.sol
+
+That loads `server/.env` and runs `npm run demo:onchain` in the server. The same command can be run directly with:
+
+```bash
+cd server && npm run demo:onchain
 ```
 
-Run tests:
+### TLSNotary Demo
+
+The `/tlsn` page supports two modes:
+
+- Extension mode: uses the maintained `tlsn-extension` Chrome extension and runs the proof in-browser.
+- Server API mode: calls `POST /api/tlsn/prove` on this repo’s server, which proxies to `TLSN_PROVER_URL`.
+
+For the extension path:
+
+```bash
+git clone https://github.com/tlsnotary/tlsn-extension.git
+cd tlsn-extension && npm install && npm run dev
+```
+
+Then load the unpacked extension in Chrome, start the verifier from the tlsn-extension repo, and return to this repo:
+
+```bash
+cd /path/to/tlsn-extension
+cd packages/verifier && cargo run
+```
+
+You can also use the local Docker notary stack instead of the Rust verifier binary.
+
+### Layer Console Demo
+
+The `/layer` page is the operator workflow console for OpenClaw.
+
+- Click Autofill demo to load bundled tunnel URLs and bearer tokens.
+- Save snapshot persists workflow metadata only, not secrets.
+- Run OpenClaw chain executes the configured Orchestrator → Research → Payment sequence.
+- Run DCT live demo navigates to the main demo and starts the same end-to-end workflow.
+
+## TLSNotary Local Stack
+
+Start the notary and WebSocket-to-TCP proxy with Docker:
+
+```bash
+docker compose -f docker-compose.tlsn.yml up -d
+```
+
+This brings up:
+
+- notary on http://127.0.0.1:7047
+- wstcp proxy on ws://127.0.0.1:55688
+
+If you want the optional server-side prover used by `/api/tlsn/prove`, run:
+
+```bash
+cd server && npm run tlsn-prover
+```
+
+## Base Sepolia And Local Chain Workflows
+
+### Base Sepolia
+
+Use the committed address files as the default app target:
+
+- `server/addresses.base-sepolia.json`
+- `client/src/addresses.base-sepolia.json`
+
+If you redeploy the contracts, run the broadcast sync script so both app layers pick up the new proxy addresses.
+
+### Local Anvil
+
+See `docs/LOCAL_DEV.md` for the full walkthrough. The short version is:
+
+```bash
+anvil
+cd contracts
+export PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+export DEPLOY_LOCAL_IDENTITY_REGISTRY=true
+forge script script/DeployDCT.s.sol:DeployDCT --rpc-url http://127.0.0.1:8545 --broadcast
+node scripts/sync-addresses-from-broadcast.mjs --chain 31337
+```
+
+Then point the server at `addresses.local-anvil.json` and start the server and client normally.
+
+## Main API Surface
+
+- `GET /` server health and runtime summary.
+- `GET /api/config` public chain and contract metadata.
+- `GET /api/events` SSE stream for live on-chain updates.
+- `GET /api/agents` agent registry and trust scores.
+- `POST /api/agents/register` register an ERC-8004 agent.
+- `GET /api/delegation/tree` delegation lineage tree.
+- `POST /api/delegation/register` register a root delegation.
+- `POST /api/delegation/delegate` full Biscuit + on-chain delegation.
+- `POST /api/delegation/execute` Datalog auth plus on-chain enforcement.
+- `POST /api/delegation/revoke` cascade revocation.
+- `POST /api/biscuit/mint`, `POST /api/biscuit/attenuate`, `POST /api/biscuit/authorize`, `POST /api/biscuit/inspect`.
+- `GET /api/tlsn/config`, `POST /api/tlsn/prove`, `POST /api/tlsn/commit`.
+- `POST /api/aa/execute-scope` ERC-4337 execution path.
+- `GET /api/layer/snapshot`, `POST /api/layer/snapshot`, `GET /api/layer/openclaw-health`, `POST /api/layer/openclaw-chat`.
+- `GET /api/integrations/delegation-framework` for the MetaMask caveat-enforcer integration.
+
+## Contracts And SDK
+
+The contracts live in `contracts/src/` and include:
+
+- `DCTRegistry.sol` for lineage, revocation, and trust scoring.
+- `DCTEnforcer.sol` for scoped action validation.
+- `NotaryAttestationVerifier.sol` for TLSNotary attestations.
+- `mocks/TestAgentRegistry.sol` for local development.
+
+Run tests with:
 
 ```bash
 cd contracts && forge test -v
 ```
 
-Gas snapshots (from `test_Gas_*`) are printed inline.  
-Security tests cover: scope mismatch, over-spend, expiry, wrong tool, scope commitment mismatch, double-registration, revoked-parent block, ancestor revoke, deprecated `validateAction`.
+Deploy and upgrade scripts are in `contracts/script/`, and the canonical local guide is `contracts/README.md`.
 
----
+The local SDK is published as `@shaurya2k06/dctsdk` version 1.1.0 and is consumed by the server through `file:../packages/dct-sdk`. Useful exports include `mintRootToken`, `attenuateToken`, `authorizeToken`, `delegate`, `execute`, `revoke`, and `computeTrustProfile`.
 
-## SDK
+## Security Notes
 
-Published as **`@shaurya2k06/dctsdk`** (this repo uses `file:../packages/dct-sdk` in `server/package.json`, so you do not need to republish to develop locally).
+- Keep `server/.env` and `client/.env` uncommitted.
+- Rotate any private key or bearer token that was ever printed.
+- `DCTEnforcer.validateAction` is deprecated; use `validateActionWithScope`.
+- The registry and enforcer are UUPS upgradeable, and upgrades are owner controlled.
+- `POST /api/layer/snapshot` rejects PEM/private-key content by design.
 
-```bash
-npm install @shaurya2k06/dctsdk@^1.1.0
-```
+## References
 
-```js
-import {
-  mintRootToken, attenuateToken, authorizeToken, delegate, execute, revoke,
-  computeTrustProfile,
-} from "@shaurya2k06/dctsdk";
-```
-
-`computeTrustProfile` and related helpers mirror `pythonNodes/trustScores.py` (DCT three-signal model). Publish a new version from `packages/dct-sdk` with `npm publish` when releasing for npm consumers.
-
-See [`docs/LOCAL_DEV.md`](docs/LOCAL_DEV.md) for a full local Anvil walkthrough.
-
----
-
-## Live Demo
-
-Navigate to **`/live-demo`** in the client app for a 12-phase interactive demo:
-
-| Phase | What happens |
-|---|---|
-| 0 | Health checks (chain, registry, enforcer, ERC-8004, Pimlico, TLSNotary) |
-| 1 | Three agents registered on ERC-8004 |
-| 2 | Root Biscuit token minted (off-chain, timed) |
-| 3 | Orchestrator → Research delegation (on-chain) |
-| 4 | Research → Payment delegation (on-chain) |
-| 5 | Successful execution — 4-check trace (revocation, identity, scope, attestation) |
-| 6 | Off-chain Datalog rejection — zero gas |
-| 7 | On-chain revert for out-of-scope action |
-| 8 | Single-tx cascade revocation |
-| 9 | Lineage walk animation |
-| 10 | Trust score timeline |
-| 11 | Summary + stats |
-
-The right-hand column shows a live SSE event log from Base Sepolia.
-
----
-
-## Security notes
-
-- `server/.env` is `.gitignore`-listed; double-check with `git status` before any push.
-- `PRIVATE_KEY` / `PIMLICO_API_KEY` should be rotated if ever logged or printed to terminal.
-- `DCTEnforcer.validateAction` is permanently deprecated (always reverts); use `validateActionWithScope`.
-- All `ownerOf` calls in DCTRegistry use `view` (EVM STATICCALL), making reentrancy through the identity registry impossible by construction. `nonReentrant` guards are defense-in-depth.
-- Contract upgrades go through UUPS `upgradeToAndCall`; only the `owner` can upgrade.
+- `docs/LOCAL_DEV.md` for the Anvil workflow.
+- `contracts/README.md` for deployment and upgrades.
+- `contracts/DELEGATION_FRAMEWORK.md` for the MetaMask delegation caveat setup.
