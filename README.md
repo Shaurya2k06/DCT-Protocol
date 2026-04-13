@@ -1,5 +1,7 @@
 # DCT Protocol
 
+🏆 Won 1st Place in KJSSE HACK X
+
 Delegatable Capability Tokens is a full-stack protocol for cryptographically scoped AI agent authorization on Base Sepolia. It combines off-chain Biscuit attenuation, on-chain delegation enforcement, TLSNotary attestations, ERC-4337 sponsorship, and a React/Vite control surface for demos and operator workflows.
 
 | Layer | Technology |
